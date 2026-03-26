@@ -1,0 +1,2 @@
+org.opentmf.api.client.hub.config.TmfHubAutoConfiguration
+org.opentmf.api.client.hub.config.ReactiveTmfHubAutoConfiguration
