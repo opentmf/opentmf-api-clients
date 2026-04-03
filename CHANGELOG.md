@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.1] - 2026-04-03
+
+### Changed
+- Bumped `opentmf-http-clients` to 2.1.1.
+- Bumped `spring-boot` to 4.0.5.
+
 ## [2.0.0] - 2026-03-25
 
 ### Added
