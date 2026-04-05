@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.2] - 2026-04-06
+
+### Fixed
+- All four auto-configuration classes now declare
+  `@AutoConfiguration(after = OpentmfHttpClientsAutoConfiguration.class)` to guarantee HTTP client
+  beans (`RestClient`/`WebClient`, `SyncTokenService`/`ReactiveTokenService`, `ClientProperties`)
+  are available before TMF API client beans are created. Previously, bean creation order was
+  non-deterministic and could fail when the API clients auto-configuration ran before the HTTP
+  clients starter. Affected classes:
+  - `TmfApiClientsAutoConfiguration` (sync REST)
+  - `ReactiveTmfApiClientsAutoConfiguration` (reactive)
+  - `TmfHubAutoConfiguration` (sync hub)
+  - `ReactiveTmfHubAutoConfiguration` (reactive hub)
+
 ## [2.0.1] - 2026-04-03
 
 ### Changed

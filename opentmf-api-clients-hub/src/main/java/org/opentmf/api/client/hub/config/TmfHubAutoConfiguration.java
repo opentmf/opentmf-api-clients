@@ -29,7 +29,7 @@ import org.springframework.web.client.RestClient;
  * <p>Only active when {@link RestClient} is on the classpath.
  */
 @Slf4j
-@AutoConfiguration
+@AutoConfiguration(after = org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration.class)
 @ConditionalOnClass(RestClient.class)
 @EnableConfigurationProperties(TmfApiClientsConfig.class)
 public class TmfHubAutoConfiguration {

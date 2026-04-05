@@ -29,7 +29,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  * <p>Only active when {@link WebClient} is on the classpath.
  */
 @Slf4j
-@AutoConfiguration
+@AutoConfiguration(after = org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration.class)
 @ConditionalOnClass(WebClient.class)
 @EnableConfigurationProperties(TmfApiClientsConfig.class)
 public class ReactiveTmfHubAutoConfiguration {

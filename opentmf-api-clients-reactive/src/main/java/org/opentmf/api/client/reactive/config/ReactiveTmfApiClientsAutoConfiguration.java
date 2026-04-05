@@ -29,7 +29,7 @@ import org.springframework.web.reactive.function.client.WebClient;
  * {@link ReactiveTmfClientFactory} bean for Level 2 (typed) usage.
  */
 @Slf4j
-@AutoConfiguration
+@AutoConfiguration(after = org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration.class)
 @EnableConfigurationProperties(TmfApiClientsConfig.class)
 public class ReactiveTmfApiClientsAutoConfiguration {
 
