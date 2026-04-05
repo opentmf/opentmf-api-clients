@@ -4,7 +4,7 @@
 
   <groupId>org.opentmf.client</groupId>
   <artifactId>opentmf-api-clients</artifactId>
-  <version>2.0.2-SNAPSHOT</version>
+  <version>2.0.2</version>
   <packaging>pom</packaging>
   <name>opentmf-api-clients</name>
 
@@ -312,7 +312,7 @@
     <url>https://github.com/opentmf/opentmf-api-clients</url>
     <connection>scm:git:git@github.com:opentmf/opentmf-api-clients.git</connection>
     <developerConnection>scm:git:git@github.com:opentmf/opentmf-api-clients.git</developerConnection>
-    <tag>HEAD</tag>
+    <tag>opentmf-api-clients-2.0.2</tag>
   </scm>
 
   <profiles>
