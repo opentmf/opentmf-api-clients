@@ -6,78 +6,93 @@ import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.reactive.api.GenericReactiveTmfClient;
-import org.opentmf.api.client.reactive.impl.GenericReactiveTmfClientImpl;import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.api.client.reactive.impl.GenericReactiveTmfClientImpl;
+import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
-import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.BeansException;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
+import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
-import org.springframework.context.ApplicationContext;
+import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.core.env.Environment;
 import org.springframework.web.reactive.function.client.WebClient;
 
 /**
  * Spring Boot auto-configuration for the reactive TMF API client module.
  *
- * <p>For each configured server/endpoint pair, registers a {@link GenericReactiveTmfClient} bean
- * named {@code {serverName}.{endpointName}TmfClient}. Also registers a
- * {@link ReactiveTmfClientFactory} bean for Level 2 (typed) usage.
+ * <p>Uses a {@code static} {@link BeanDefinitionRegistryPostProcessor} to register
+ * {@link GenericReactiveTmfClient} bean definitions during the post-processing phase.
  */
 @Slf4j
-@AutoConfiguration(after = org.opentmf.client.starter.OpentmfHttpClientsAutoConfiguration.class)
-@EnableConfigurationProperties(TmfApiClientsConfig.class)
+@AutoConfiguration
 public class ReactiveTmfApiClientsAutoConfiguration {
 
-  public ReactiveTmfApiClientsAutoConfiguration(
-      TmfApiClientsConfig config,
-      ApplicationContext ctx,
-      BeanDefinitionRegistry registry) {
+  @Bean
+  public static BeanDefinitionRegistryPostProcessor reactiveTmfApiClientsBeanRegistrar(
+      Environment env) {
+    return new BeanDefinitionRegistryPostProcessor() {
 
-    config.getApiClients().forEach((serverName, serverConfig) ->
-        serverConfig.getEndpoints().forEach((endpointName, endpointConfig) ->
-            registerGenericBean(registry, ctx, serverName, endpointName, serverConfig, endpointConfig)));
+      @Override
+      public void postProcessBeanDefinitionRegistry(@org.jspecify.annotations.NonNull BeanDefinitionRegistry registry)
+          throws BeansException {
+
+        TmfApiClientsConfig config = Binder.get(env)
+            .bind("opentmf", TmfApiClientsConfig.class)
+            .orElse(new TmfApiClientsConfig());
+
+        if (config.getApiClients() == null || config.getApiClients().isEmpty()) {
+          return;
+        }
+
+        config.getApiClients().forEach((serverName, serverConfig) ->
+            serverConfig.getEndpoints().forEach((endpointName, endpointConfig) -> {
+              if (endpointConfig.getPath().endsWith(TmfApiClientConstants.HUB_ENDPOINT_SUFFIX)) {
+                log.debug("Skipping reactive generic bean for hub endpoint '{}.{}'.",
+                    serverName, endpointName);
+                return;
+              }
+
+              String beanName = serverName + "." + endpointName + "TmfClient";
+              if (registry.containsBeanDefinition(beanName)) {
+                log.debug("Bean '{}' already registered, skipping.", beanName);
+                return;
+              }
+
+              String clientRef = serverConfig.getClientRef();
+
+              RootBeanDefinition bd = new RootBeanDefinition(
+                  GenericReactiveTmfClientImpl.class, () -> {
+                ConfigurableListableBeanFactory bf = (ConfigurableListableBeanFactory) registry;
+                WebClient webClient = bf.getBean(clientRef + WEB_CLIENT, WebClient.class);
+                TokenService tokenService =
+                    bf.getBean(clientRef + TOKEN_SERVICE, TokenService.class);
+                ClientProperties props =
+                    bf.getBean(clientRef + CLIENT_PROPERTIES, ClientProperties.class);
+                return new GenericReactiveTmfClientImpl(
+                    endpointConfig, serverConfig, webClient, tokenService, props);
+              });
+              bd.setDependsOn("opentmfHttpClientsStarter");
+              registry.registerBeanDefinition(beanName, bd);
+              log.debug("Registered reactive TMF client bean definition '{}'.", beanName);
+            }));
+      }
+
+      @Override
+      public void postProcessBeanFactory(@org.jspecify.annotations.NonNull ConfigurableListableBeanFactory beanFactory)
+          throws BeansException {
+        // no-op
+      }
+    };
   }
 
   @Bean
-  public ReactiveTmfClientFactory reactiveTmfClientFactory(ApplicationContext ctx) {
+  public ReactiveTmfClientFactory reactiveTmfClientFactory(
+      org.springframework.context.ConfigurableApplicationContext ctx) {
     return new ReactiveTmfClientFactory(ctx);
-  }
-
-  private void registerGenericBean(
-      BeanDefinitionRegistry registry,
-      ApplicationContext ctx,
-      String serverName,
-      String endpointName,
-      ServerConfig serverConfig,
-      EndpointConfig endpointConfig) {
-
-    if (endpointConfig.getPath().endsWith(TmfApiClientConstants.HUB_ENDPOINT_SUFFIX)) {
-      log.debug("Skipping generic bean for hub endpoint '{}.{}'.", serverName, endpointName);
-      return;
-    }
-
-    String beanName = serverName + "." + endpointName + "TmfClient";
-    if (registry.containsBeanDefinition(beanName)) {
-      log.debug("Bean '{}' already registered, skipping.", beanName);
-      return;
-    }
-
-    String clientRef = serverConfig.getClientRef();
-    WebClient webClient = ctx.getBean(clientRef + WEB_CLIENT, WebClient.class);
-    TokenService tokenService = ctx.getBean(clientRef + TOKEN_SERVICE, TokenService.class);
-    ClientProperties props = ctx.getBean(clientRef + CLIENT_PROPERTIES, ClientProperties.class);
-
-    GenericReactiveTmfClient client =
-        new GenericReactiveTmfClientImpl(endpointConfig, serverConfig, webClient, tokenService, props);
-
-    BeanDefinition bd = new RootBeanDefinition(GenericReactiveTmfClient.class,
-        () -> client);
-    registry.registerBeanDefinition(beanName, bd);
-    log.debug("Registered reactive TMF client bean '{}'.", beanName);
   }
 }

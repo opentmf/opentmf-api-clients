@@ -4,19 +4,34 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2.0.2] - 2026-04-06
+## [2.0.3] - 2026-04-06
 
 ### Fixed
-- All four auto-configuration classes now declare
-  `@AutoConfiguration(after = OpentmfHttpClientsAutoConfiguration.class)` to guarantee HTTP client
-  beans (`RestClient`/`WebClient`, `SyncTokenService`/`ReactiveTokenService`, `ClientProperties`)
-  are available before TMF API client beans are created. Previously, bean creation order was
-  non-deterministic and could fail when the API clients auto-configuration ran before the HTTP
-  clients starter. Affected classes:
+- All four auto-configuration classes refactored from constructor-based bean registration to
+  `static BeanDefinitionRegistryPostProcessor` pattern. This fixes the "Ghost Configuration"
+  problem in Spring Boot 4 where auto-configuration classes that only register beans in their
+  constructor are never instantiated if no `@Bean` method output is requested by the dependency
+  graph. Bean definitions are now registered during the post-processing phase (before any regular
+  beans are created), closing the phase gap between component-scanned beans and dynamically
+  registered beans. Configuration is read from the `Environment` via `Binder.get(env).bind(...)`
+  instead of `@ConfigurationProperties` injection. Bean instances use lazy suppliers with
+  `@DependsOn("opentmfHttpClientsStarter")` to ensure HTTP client beans are available at creation
+  time. Affected classes:
   - `TmfApiClientsAutoConfiguration` (sync REST)
   - `ReactiveTmfApiClientsAutoConfiguration` (reactive)
   - `TmfHubAutoConfiguration` (sync hub)
   - `ReactiveTmfHubAutoConfiguration` (reactive hub)
+
+### Changed
+- Constructor parameter changed from `ApplicationContext` + `BeanDefinitionRegistry` to
+  `ConfigurableApplicationContext` (registry obtained via `ctx.getBeanFactory()`).
+
+## [2.0.2] - 2026-04-06
+
+### Changed
+- All four auto-configuration classes now declare
+  `@AutoConfiguration(after = OpentmfHttpClientsAutoConfiguration.class)` to express ordering
+  intent with the HTTP clients starter.
 
 ## [2.0.1] - 2026-04-03
 

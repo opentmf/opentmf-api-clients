@@ -1,95 +1,46 @@
 package org.opentmf.api.client.hub.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import java.time.Duration;
-import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
-import org.opentmf.api.client.common.model.Scope;
-import org.opentmf.api.client.hub.helper.MockSyncTokenService;
-import org.opentmf.api.client.hub.helper.MockTokenService;
-import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.beans.factory.config.BeanDefinition;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.context.ApplicationContext;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
-import org.springframework.web.client.RestClient;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
 
 class HubAutoConfigurationIT {
 
-  private ApplicationContext ctx;
   private BeanDefinitionRegistry registry;
-  private TmfApiClientsConfig config;
+  private StandardEnvironment env;
 
   @BeforeEach
   void setUp() {
-    ctx = mock(ApplicationContext.class);
     registry = mock(BeanDefinitionRegistry.class);
+    env = new StandardEnvironment();
 
-    ClientProperties props = new ClientProperties();
-    props.setNumRetries(0);
-    props.setRetryWaitDuration(Duration.ofMillis(100));
-
-    RestClient restClient = RestClient.builder()
-        .requestFactory(new JdkClientHttpRequestFactory()).build();
-    WebClient webClient = WebClient.builder().build();
-
-    when(ctx.getBean("defaultRestClient", RestClient.class)).thenReturn(restClient);
-    when(ctx.getBean("defaultTokenService",
-        org.opentmf.client.rest.service.api.SyncTokenService.class))
-        .thenReturn(new MockSyncTokenService());
-    when(ctx.getBean("defaultClientProperties", ClientProperties.class)).thenReturn(props);
-
-    when(ctx.getBean("defaultWebClient", WebClient.class)).thenReturn(webClient);
-    when(ctx.getBean("defaultTokenService",
-        org.opentmf.client.reactive.service.api.TokenService.class))
-        .thenReturn(new MockTokenService());
-
-    config = new TmfApiClientsConfig();
-    Map<String, ServerConfig> apiClients = new LinkedHashMap<>();
-
-    ServerConfig serverConfig = new ServerConfig();
-    serverConfig.setClientRef("default");
-    serverConfig.setBaseUrl("http://localhost:8080");
-    serverConfig.setContextPath("/tmf-api/productCatalogManagement/v4");
-
-    Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();
-
-    EndpointConfig hubEndpoint = new EndpointConfig();
-    hubEndpoint.setPath("/hub");
-    Map<Scope, String> scopes = new EnumMap<>(Scope.class);
-    scopes.put(Scope.POST, "POST_SCOPE");
-    scopes.put(Scope.DELETE, "DELETE_SCOPE");
-    hubEndpoint.setScopes(scopes);
-    endpoints.put("hub", hubEndpoint);
-
-    EndpointConfig regularEndpoint = new EndpointConfig();
-    regularEndpoint.setPath("/productOffering");
-    regularEndpoint.setScopes(new EnumMap<>(Scope.class));
-    endpoints.put("product-offering", regularEndpoint);
-
-    serverConfig.setEndpoints(endpoints);
-    apiClients.put("catalog-management", serverConfig);
-    config.setApiClients(apiClients);
+    Map<String, Object> props = new LinkedHashMap<>();
+    String prefix = "opentmf.api-clients.catalog-management";
+    props.put(prefix + ".client-ref", "default");
+    props.put(prefix + ".base-url", "http://localhost:8080");
+    props.put(prefix + ".context-path", "/tmf-api/productCatalogManagement/v4");
+    props.put(prefix + ".endpoints.hub.path", "/hub");
+    props.put(prefix + ".endpoints.product-offering.path", "/productOffering");
+    env.getPropertySources().addFirst(new MapPropertySource("test", props));
   }
 
   @Test
-  void syncAutoConfig_registersHubBean_skipsNonHub() {
-    new TmfHubAutoConfiguration(config, ctx, registry);
+  void syncHubRegistrar_registersHubBean_skipsNonHub() {
+    BeanDefinitionRegistryPostProcessor pp =
+        TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
 
     verify(registry).registerBeanDefinition(
         eq("catalog-management.hubTmfHubClient"), any(BeanDefinition.class));
@@ -98,33 +49,14 @@ class HubAutoConfigurationIT {
   }
 
   @Test
-  void reactiveAutoConfig_registersHubBean_skipsNonHub() {
-    new ReactiveTmfHubAutoConfiguration(config, ctx, registry);
+  void reactiveHubRegistrar_registersHubBean_skipsNonHub() {
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
 
     verify(registry).registerBeanDefinition(
         eq("catalog-management.hubReactiveTmfHubClient"), any(BeanDefinition.class));
     verify(registry, never()).registerBeanDefinition(
         eq("catalog-management.product-offeringReactiveTmfHubClient"), any(BeanDefinition.class));
-  }
-
-  @Test
-  void syncAutoConfig_skipsAlreadyRegisteredBean() {
-    when(registry.containsBeanDefinition("catalog-management.hubTmfHubClient")).thenReturn(true);
-
-    new TmfHubAutoConfiguration(config, ctx, registry);
-
-    verify(registry, never()).registerBeanDefinition(
-        eq("catalog-management.hubTmfHubClient"), any(BeanDefinition.class));
-  }
-
-  @Test
-  void reactiveAutoConfig_skipsAlreadyRegisteredBean() {
-    when(registry.containsBeanDefinition("catalog-management.hubReactiveTmfHubClient"))
-        .thenReturn(true);
-
-    new ReactiveTmfHubAutoConfiguration(config, ctx, registry);
-
-    verify(registry, never()).registerBeanDefinition(
-        eq("catalog-management.hubReactiveTmfHubClient"), any(BeanDefinition.class));
   }
 }

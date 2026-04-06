@@ -1,88 +1,74 @@
 package org.opentmf.api.client.reactive.config;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
-import static org.opentmf.client.common.util.TokenUtil.CLIENT_PROPERTIES;
-import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
-import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
-import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
-import org.opentmf.client.common.model.ClientProperties;
-import org.opentmf.client.reactive.service.api.TokenService;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
-import org.springframework.context.ApplicationContext;
-import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
+import org.springframework.core.env.MapPropertySource;
+import org.springframework.core.env.StandardEnvironment;
 
 class ReactiveTmfApiClientsAutoConfigurationTest {
 
-  private TmfApiClientsConfig config;
-  private ApplicationContext ctx;
   private BeanDefinitionRegistry registry;
+  private StandardEnvironment env;
 
   @BeforeEach
   void setUp() {
-    ctx = mock(ApplicationContext.class);
     registry = mock(BeanDefinitionRegistry.class);
+    env = new StandardEnvironment();
+  }
 
-    when(ctx.getBean("default" + WEB_CLIENT, WebClient.class))
-        .thenReturn(mock(WebClient.class));
-    when(ctx.getBean("default" + TOKEN_SERVICE, TokenService.class))
-        .thenReturn(mock(TokenService.class));
-    when(ctx.getBean("default" + CLIENT_PROPERTIES, ClientProperties.class))
-        .thenReturn(new ClientProperties());
-
-    EndpointConfig ep1 = new EndpointConfig();
-    ep1.setPath("/products");
-    EndpointConfig ep2 = new EndpointConfig();
-    ep2.setPath("/orders");
-
-    ServerConfig server = new ServerConfig();
-    server.setClientRef("default");
-    server.setBaseUrl("http://localhost");
-    Map<String, EndpointConfig> endpoints = new LinkedHashMap<>();
-    endpoints.put("product", ep1);
-    endpoints.put("order", ep2);
-    server.setEndpoints(endpoints);
-
-    config = new TmfApiClientsConfig();
-    config.setApiClients(Map.of("catalog", server));
+  private void addEndpoint(Map<String, Object> props, String endpoint, String path) {
+    String prefix = "opentmf.api-clients.catalog";
+    props.put(prefix + ".client-ref", "default");
+    props.put(prefix + ".base-url", "http://localhost");
+    props.put(prefix + ".endpoints." + endpoint + ".path", path);
   }
 
   @Test
-  void constructor_registersGenericBeanForEachEndpoint() {
-    new ReactiveTmfApiClientsAutoConfiguration(config, ctx, registry);
+  void postProcessor_registersReactiveBeanForEachEndpoint() {
+    Map<String, Object> props = new LinkedHashMap<>();
+    addEndpoint(props, "product", "/products");
+    addEndpoint(props, "order", "/orders");
+    env.getPropertySources().addFirst(new MapPropertySource("test", props));
+
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfApiClientsAutoConfiguration.reactiveTmfApiClientsBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
 
     verify(registry).registerBeanDefinition(eq("catalog.productTmfClient"), any());
     verify(registry).registerBeanDefinition(eq("catalog.orderTmfClient"), any());
   }
 
   @Test
-  void constructor_skipsAlreadyRegisteredBean() {
-    when(registry.containsBeanDefinition("catalog.productTmfClient")).thenReturn(true);
+  void postProcessor_skipsHubEndpoints() {
+    Map<String, Object> props = new LinkedHashMap<>();
+    addEndpoint(props, "product", "/products");
+    addEndpoint(props, "hub", "/hub");
+    env.getPropertySources().addFirst(new MapPropertySource("test", props));
 
-    new ReactiveTmfApiClientsAutoConfiguration(config, ctx, registry);
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfApiClientsAutoConfiguration.reactiveTmfApiClientsBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
 
-    verify(registry, never()).registerBeanDefinition(eq("catalog.productTmfClient"), any());
-    verify(registry).registerBeanDefinition(eq("catalog.orderTmfClient"), any());
+    verify(registry).registerBeanDefinition(eq("catalog.productTmfClient"), any());
+    verify(registry, never()).registerBeanDefinition(eq("catalog.hubTmfClient"), any());
   }
 
   @Test
-  void reactiveTmfClientFactory_returnsFactoryInstance() {
-    var autoConfig = new ReactiveTmfApiClientsAutoConfiguration(config, ctx, registry);
+  void postProcessor_emptyConfig_registersNothing() {
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfApiClientsAutoConfiguration.reactiveTmfApiClientsBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
 
-    ReactiveTmfClientFactory factory = autoConfig.reactiveTmfClientFactory(ctx);
-
-    assertThat(factory).isNotNull();
+    verify(registry, never()).registerBeanDefinition(any(), any());
   }
 }
