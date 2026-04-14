@@ -63,6 +63,12 @@ public class TmfApiClientsConfig {
      */
     private String clientType;
 
+    /**
+     * Optional map of headers that will be added to every request made by this client.
+     * Applied in addition to the Authorization header and any request-context headers.
+     */
+    private Map<String, String> fixedHeaders;
+
     @Valid
     @NotEmpty
     private Map<String, EndpointConfig> endpoints;
@@ -76,5 +82,12 @@ public class TmfApiClientsConfig {
     private String path;
 
     private Map<Scope, String> scopes = new EnumMap<>(Scope.class);
+
+    /**
+     * Optional map of headers that will be added to every request made against this endpoint.
+     * Merged with {@link ServerConfig#getFixedHeaders()}; on key collisions, endpoint-level
+     * entries win over server-level ones.
+     */
+    private Map<String, String> fixedHeaders;
   }
 }

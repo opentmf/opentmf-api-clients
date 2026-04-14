@@ -1,6 +1,7 @@
 package org.opentmf.api.client.reactive.impl;
 
 import static org.opentmf.api.client.common.util.HeaderUtil.headersConsumer;
+import static org.opentmf.api.client.common.util.HeaderUtil.mergeFixedHeaders;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidate;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidateJsonPatch;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidateMergePatch;
@@ -95,7 +96,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return headersConsumer(
         tokenService.getTokenType(),
         token,
-        serverConfig.getEndpoints() != null ? null : null, // fixed headers are per-endpoint
+        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()),
         ctx);
   }
 
@@ -454,11 +455,6 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     URI base = buildBaseUri(serverConfig, endpointConfig);
     URI uri = withPagination(base, pageable);
 
-    TmfOffsetRequest req = TmfOffsetRequest.of(pageable);
-    if (req.getJsonFilterType() == JsonFilter.TYPE.SERVER) {
-      // server filter already embedded in URI by withPagination
-    }
-
     var h = prepareGetDelete(headers(token, toContext(pageable)));
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
@@ -505,10 +501,6 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return WebClientUtil.retry(
         clientProperties.getNumRetries(),
         clientProperties.getRetryWaitDuration());
-  }
-
-  private static org.springframework.web.reactive.function.client.ExchangeFilterFunction noOp() {
-    return null;
   }
 
   private static Mono<? extends Throwable> handleError(

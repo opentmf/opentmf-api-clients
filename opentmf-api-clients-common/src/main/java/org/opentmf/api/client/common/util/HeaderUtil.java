@@ -5,6 +5,7 @@ import static org.opentmf.api.client.common.util.TmfApiClientConstants.ERR_NULL_
 import static org.opentmf.api.client.common.util.TmfApiClientConstants.MEDIA_TYPE_JSON_PATCH;
 import static org.opentmf.api.client.common.util.TmfApiClientConstants.MEDIA_TYPE_MERGE_PATCH;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
@@ -96,6 +97,23 @@ public final class HeaderUtil {
     if (!StringUtils.hasText(headers.getFirst(HttpHeaders.AUTHORIZATION))) {
       throw new IllegalArgumentException(ERR_EMPTY_AUTH_TOKEN);
     }
+  }
+
+  /**
+   * Merges server-level and endpoint-level fixed headers. Endpoint entries win on key collision.
+   * Returns null when both inputs are null/empty so callers can skip the consumer's fixed-headers
+   * branch cheaply.
+   */
+  public static Map<String, String> mergeFixedHeaders(
+      Map<String, String> serverFixed, Map<String, String> endpointFixed) {
+    boolean serverEmpty = serverFixed == null || serverFixed.isEmpty();
+    boolean endpointEmpty = endpointFixed == null || endpointFixed.isEmpty();
+    if (serverEmpty && endpointEmpty) return null;
+    if (endpointEmpty) return serverFixed;
+    if (serverEmpty) return endpointFixed;
+    Map<String, String> merged = new HashMap<>(serverFixed);
+    merged.putAll(endpointFixed);
+    return merged;
   }
 
   /**

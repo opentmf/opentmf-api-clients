@@ -106,6 +106,41 @@ class HeaderUtilTest {
   }
 
   @Test
+  void mergeFixedHeaders_bothNull_returnsNull() {
+    assertThat(HeaderUtil.mergeFixedHeaders(null, null)).isNull();
+  }
+
+  @Test
+  void mergeFixedHeaders_bothEmpty_returnsNull() {
+    assertThat(HeaderUtil.mergeFixedHeaders(java.util.Map.of(), java.util.Map.of())).isNull();
+  }
+
+  @Test
+  void mergeFixedHeaders_onlyServer_returnsServer() {
+    var server = java.util.Map.of("X-A", "1");
+    assertThat(HeaderUtil.mergeFixedHeaders(server, null)).isSameAs(server);
+    assertThat(HeaderUtil.mergeFixedHeaders(server, java.util.Map.of())).isSameAs(server);
+  }
+
+  @Test
+  void mergeFixedHeaders_onlyEndpoint_returnsEndpoint() {
+    var endpoint = java.util.Map.of("X-B", "2");
+    assertThat(HeaderUtil.mergeFixedHeaders(null, endpoint)).isSameAs(endpoint);
+    assertThat(HeaderUtil.mergeFixedHeaders(java.util.Map.of(), endpoint)).isSameAs(endpoint);
+  }
+
+  @Test
+  void mergeFixedHeaders_endpointOverridesServer() {
+    var server = java.util.Map.of("X-A", "server", "X-Shared", "server");
+    var endpoint = java.util.Map.of("X-B", "endpoint", "X-Shared", "endpoint");
+    var merged = HeaderUtil.mergeFixedHeaders(server, endpoint);
+    assertThat(merged)
+        .containsEntry("X-A", "server")
+        .containsEntry("X-B", "endpoint")
+        .containsEntry("X-Shared", "endpoint");
+  }
+
+  @Test
   void prepareGetDelete_throwsWhenConsumerIsNull() {
     assertThatThrownBy(() -> HeaderUtil.prepareGetDelete(null))
         .isInstanceOf(IllegalArgumentException.class)

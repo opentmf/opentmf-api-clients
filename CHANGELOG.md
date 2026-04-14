@@ -4,6 +4,20 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.5] - 2026-04-14
+
+### Added
+- Fixed headers support per TMF client, ported from the retired `opentmf-clients-base` library.
+  - `ServerConfig.fixedHeaders`: headers applied to every request made by the client.
+  - `EndpointConfig.fixedHeaders`: headers applied to every request made against the endpoint.
+  - When both are present, maps are merged; endpoint-level entries override server-level entries
+    on key collisions.
+- `HeaderUtil.mergeFixedHeaders(server, endpoint)` helper.
+
+### Changed
+- `TmfClientImpl` and `ReactiveTmfClientImpl` now forward merged fixed headers to the underlying
+  `HeaderUtil.headersConsumer(...)` instead of passing `null`.
+
 ## [2.0.4] - 2026-04-06
 
 ### Changed

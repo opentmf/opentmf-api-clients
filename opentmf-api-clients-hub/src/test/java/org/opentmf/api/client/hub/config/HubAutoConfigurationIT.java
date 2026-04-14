@@ -59,4 +59,56 @@ class HubAutoConfigurationIT {
     verify(registry, never()).registerBeanDefinition(
         eq("catalog-management.product-offeringReactiveTmfHubClient"), any(BeanDefinition.class));
   }
+
+  @Test
+  void syncHubRegistrar_noApiClients_registersNothing() {
+    var emptyEnv = new StandardEnvironment();
+    BeanDefinitionRegistryPostProcessor pp =
+        TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(emptyEnv);
+    pp.postProcessBeanDefinitionRegistry(registry);
+    verify(registry, never()).registerBeanDefinition(
+        org.mockito.ArgumentMatchers.anyString(), any(BeanDefinition.class));
+  }
+
+  @Test
+  void reactiveHubRegistrar_noApiClients_registersNothing() {
+    var emptyEnv = new StandardEnvironment();
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(emptyEnv);
+    pp.postProcessBeanDefinitionRegistry(registry);
+    verify(registry, never()).registerBeanDefinition(
+        org.mockito.ArgumentMatchers.anyString(), any(BeanDefinition.class));
+  }
+
+  @Test
+  void syncHubRegistrar_skipsWhenAlreadyRegistered() {
+    org.mockito.Mockito.when(
+            registry.containsBeanDefinition("catalog-management.hubTmfHubClient"))
+        .thenReturn(true);
+    BeanDefinitionRegistryPostProcessor pp =
+        TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
+    verify(registry, never()).registerBeanDefinition(
+        eq("catalog-management.hubTmfHubClient"), any(BeanDefinition.class));
+  }
+
+  @Test
+  void reactiveHubRegistrar_skipsWhenAlreadyRegistered() {
+    org.mockito.Mockito.when(
+            registry.containsBeanDefinition("catalog-management.hubReactiveTmfHubClient"))
+        .thenReturn(true);
+    BeanDefinitionRegistryPostProcessor pp =
+        ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(env);
+    pp.postProcessBeanDefinitionRegistry(registry);
+    verify(registry, never()).registerBeanDefinition(
+        eq("catalog-management.hubReactiveTmfHubClient"), any(BeanDefinition.class));
+  }
+
+  @Test
+  void postProcessBeanFactory_isNoOp() {
+    var beanFactory = mock(org.springframework.beans.factory.config.ConfigurableListableBeanFactory.class);
+    TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(env).postProcessBeanFactory(beanFactory);
+    ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(env).postProcessBeanFactory(beanFactory);
+    org.mockito.Mockito.verifyNoInteractions(beanFactory);
+  }
 }

@@ -1,6 +1,7 @@
 package org.opentmf.api.client.rest.impl;
 
 import static org.opentmf.api.client.common.util.HeaderUtil.headersConsumer;
+import static org.opentmf.api.client.common.util.HeaderUtil.mergeFixedHeaders;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidate;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidateJsonPatch;
 import static org.opentmf.api.client.common.util.HeaderUtil.prepareAndValidateMergePatch;
@@ -82,7 +83,8 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   protected Consumer<HttpHeaders> headers(String token, TmfRequestContext ctx) {
-    return headersConsumer(tokenService.getTokenType(), token, null, ctx);
+    return headersConsumer(tokenService.getTokenType(), token,
+        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()), ctx);
   }
 
   // ==========================================================================

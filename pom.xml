@@ -270,7 +270,7 @@
               <goal>check</goal>
             </goals>
             <configuration>
-              <haltOnFailure>false</haltOnFailure>
+              <haltOnFailure>true</haltOnFailure>
               <excludes>
                 <exclude>**/*Application.*</exclude>
               </excludes>
