@@ -28,6 +28,7 @@ import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.opentmf.api.client.common.util.ResponseHeaderUtil;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.reactive.api.ReactiveTmfClient;
+import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.client.reactive.util.WebClientUtil;
@@ -38,9 +39,11 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Reactive (WebClient) implementation of {@link ReactiveTmfClient}.
@@ -497,16 +500,14 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         });
   }
 
-  private reactor.util.retry.RetryBackoffSpec retry() {
+  private RetryBackoffSpec retry() {
     return WebClientUtil.retry(
         clientProperties.getNumRetries(),
         clientProperties.getRetryWaitDuration());
   }
 
-  private static Mono<? extends Throwable> handleError(
-      org.springframework.web.reactive.function.client.ClientResponse response) {
-    return WebClientUtil.handleError(response,
-        org.opentmf.client.common.exception.OpenTmfClientResponseException.class);
+  private static Mono<? extends Throwable> handleError(ClientResponse response) {
+    return WebClientUtil.handleError(response, OpenTmfClientResponseException.class);
   }
 
   /** Extracts a TmfRequestContext from a Pageable, if it is a TmfOffsetRequest. */

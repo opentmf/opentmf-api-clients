@@ -2,6 +2,7 @@ package org.opentmf.api.client.common.model;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import tools.jackson.databind.annotation.JsonDeserialize;
+import java.util.HashMap;
 import java.util.Map;
 
 public enum Scope {
@@ -26,7 +27,7 @@ public enum Scope {
   private static final Map<String, Scope> REVERSE_MAP;
 
   static {
-    REVERSE_MAP = new java.util.HashMap<>();
+    REVERSE_MAP = new HashMap<>();
     for (Scope scope : Scope.values()) {
       REVERSE_MAP.put(scope.getValue(), scope);
     }

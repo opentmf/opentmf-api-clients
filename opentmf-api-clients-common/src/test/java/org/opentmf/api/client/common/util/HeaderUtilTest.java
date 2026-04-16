@@ -3,10 +3,13 @@ package org.opentmf.api.client.common.util;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.util.Map;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
+import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.util.LinkedMultiValueMap;
 
 class HeaderUtilTest {
 
@@ -76,7 +79,7 @@ class HeaderUtilTest {
   @Test
   void headersConsumer_withFixedHeaders() {
     var consumer = HeaderUtil.headersConsumer(
-        "Bearer", "my-token", java.util.Map.of("X-Tenant", "t1"), null);
+        "Bearer", "my-token", Map.of("X-Tenant", "t1"), null);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst("X-Tenant")).isEqualTo("t1");
@@ -84,8 +87,8 @@ class HeaderUtilTest {
 
   @Test
   void headersConsumer_withRequestContext() {
-    var ctx = new org.opentmf.api.client.common.model.TmfRequestContext();
-    var headerParams = new org.springframework.util.LinkedMultiValueMap<String, String>();
+    var ctx = new TmfRequestContext();
+    var headerParams = new LinkedMultiValueMap<String, String>();
     headerParams.add("X-Ctx", "ctx-val");
     ctx.setHeaderParameters(headerParams);
 
@@ -106,33 +109,65 @@ class HeaderUtilTest {
   }
 
   @Test
+  void headersConsumer_defaultsAcceptToJson_whenAbsent() {
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, null);
+    var headers = new HttpHeaders();
+    consumer.accept(headers);
+    assertThat(headers.getAccept()).containsExactly(MediaType.APPLICATION_JSON);
+  }
+
+  @Test
+  void headersConsumer_preservesExplicitAcceptFromFixedHeaders() {
+    var consumer = HeaderUtil.headersConsumer(
+        "Bearer", "my-token",
+        Map.of(HttpHeaders.ACCEPT, "application/vnd.tmf.v4+json"),
+        null);
+    var headers = new HttpHeaders();
+    consumer.accept(headers);
+    assertThat(headers.getFirst(HttpHeaders.ACCEPT)).isEqualTo("application/vnd.tmf.v4+json");
+  }
+
+  @Test
+  void headersConsumer_preservesExplicitAcceptFromRequestContext() {
+    var ctx = new TmfRequestContext();
+    var headerParams = new LinkedMultiValueMap<String, String>();
+    headerParams.add(HttpHeaders.ACCEPT, "application/xml");
+    ctx.setHeaderParameters(headerParams);
+
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, ctx);
+    var headers = new HttpHeaders();
+    consumer.accept(headers);
+    assertThat(headers.getFirst(HttpHeaders.ACCEPT)).isEqualTo("application/xml");
+  }
+
+  @Test
   void mergeFixedHeaders_bothNull_returnsNull() {
     assertThat(HeaderUtil.mergeFixedHeaders(null, null)).isNull();
   }
 
   @Test
   void mergeFixedHeaders_bothEmpty_returnsNull() {
-    assertThat(HeaderUtil.mergeFixedHeaders(java.util.Map.of(), java.util.Map.of())).isNull();
+    assertThat(HeaderUtil.mergeFixedHeaders(Map.of(), Map.of())).isNull();
   }
 
   @Test
   void mergeFixedHeaders_onlyServer_returnsServer() {
-    var server = java.util.Map.of("X-A", "1");
+    var server = Map.of("X-A", "1");
     assertThat(HeaderUtil.mergeFixedHeaders(server, null)).isSameAs(server);
-    assertThat(HeaderUtil.mergeFixedHeaders(server, java.util.Map.of())).isSameAs(server);
+    assertThat(HeaderUtil.mergeFixedHeaders(server, Map.of())).isSameAs(server);
   }
 
   @Test
   void mergeFixedHeaders_onlyEndpoint_returnsEndpoint() {
-    var endpoint = java.util.Map.of("X-B", "2");
+    var endpoint = Map.of("X-B", "2");
     assertThat(HeaderUtil.mergeFixedHeaders(null, endpoint)).isSameAs(endpoint);
-    assertThat(HeaderUtil.mergeFixedHeaders(java.util.Map.of(), endpoint)).isSameAs(endpoint);
+    assertThat(HeaderUtil.mergeFixedHeaders(Map.of(), endpoint)).isSameAs(endpoint);
   }
 
   @Test
   void mergeFixedHeaders_endpointOverridesServer() {
-    var server = java.util.Map.of("X-A", "server", "X-Shared", "server");
-    var endpoint = java.util.Map.of("X-B", "endpoint", "X-Shared", "endpoint");
+    var server = Map.of("X-A", "server", "X-Shared", "server");
+    var endpoint = Map.of("X-B", "endpoint", "X-Shared", "endpoint");
     var merged = HeaderUtil.mergeFixedHeaders(server, endpoint);
     assertThat(merged)
         .containsEntry("X-A", "server")

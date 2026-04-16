@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.6] - 2026-04-16
+
+### Added
+- `HeaderUtil.headersConsumer(...)` now defaults `Accept: application/json` when the caller
+  did not already provide an `Accept` header via fixed headers or the request context. TMF
+  APIs always speak JSON, so this removes the reliance on `*/*` from the underlying HTTP
+  client defaults.
+
 ## [2.0.5] - 2026-04-14
 
 ### Added

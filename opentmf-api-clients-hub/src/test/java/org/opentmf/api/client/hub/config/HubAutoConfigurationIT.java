@@ -1,16 +1,20 @@
 package org.opentmf.api.client.hub.config;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.config.BeanDefinition;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.beans.factory.support.BeanDefinitionRegistry;
 import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProcessor;
 import org.springframework.core.env.MapPropertySource;
@@ -67,7 +71,7 @@ class HubAutoConfigurationIT {
         TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(emptyEnv);
     pp.postProcessBeanDefinitionRegistry(registry);
     verify(registry, never()).registerBeanDefinition(
-        org.mockito.ArgumentMatchers.anyString(), any(BeanDefinition.class));
+        anyString(), any(BeanDefinition.class));
   }
 
   @Test
@@ -77,12 +81,12 @@ class HubAutoConfigurationIT {
         ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(emptyEnv);
     pp.postProcessBeanDefinitionRegistry(registry);
     verify(registry, never()).registerBeanDefinition(
-        org.mockito.ArgumentMatchers.anyString(), any(BeanDefinition.class));
+        anyString(), any(BeanDefinition.class));
   }
 
   @Test
   void syncHubRegistrar_skipsWhenAlreadyRegistered() {
-    org.mockito.Mockito.when(
+    when(
             registry.containsBeanDefinition("catalog-management.hubTmfHubClient"))
         .thenReturn(true);
     BeanDefinitionRegistryPostProcessor pp =
@@ -94,7 +98,7 @@ class HubAutoConfigurationIT {
 
   @Test
   void reactiveHubRegistrar_skipsWhenAlreadyRegistered() {
-    org.mockito.Mockito.when(
+    when(
             registry.containsBeanDefinition("catalog-management.hubReactiveTmfHubClient"))
         .thenReturn(true);
     BeanDefinitionRegistryPostProcessor pp =
@@ -106,9 +110,9 @@ class HubAutoConfigurationIT {
 
   @Test
   void postProcessBeanFactory_isNoOp() {
-    var beanFactory = mock(org.springframework.beans.factory.config.ConfigurableListableBeanFactory.class);
+    var beanFactory = mock(ConfigurableListableBeanFactory.class);
     TmfHubAutoConfiguration.tmfHubClientBeanRegistrar(env).postProcessBeanFactory(beanFactory);
     ReactiveTmfHubAutoConfiguration.reactiveTmfHubClientBeanRegistrar(env).postProcessBeanFactory(beanFactory);
-    org.mockito.Mockito.verifyNoInteractions(beanFactory);
+    verifyNoInteractions(beanFactory);
   }
 }

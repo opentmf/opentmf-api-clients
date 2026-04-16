@@ -7,6 +7,7 @@ import static org.opentmf.api.client.common.util.HeaderUtil.prepareGetDelete;
 import java.net.URI;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
@@ -126,7 +127,7 @@ public class TmfHubClientImpl implements TmfHubClient {
     return headersConsumer(tokenService.getTokenType(), token, null, null);
   }
 
-  private <T> T withRetry(java.util.function.Supplier<T> action) {
+  private <T> T withRetry(Supplier<T> action) {
     return SyncClientUtil.executeWithRetry(
         action,
         clientProperties.getNumRetries(),

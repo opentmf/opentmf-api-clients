@@ -5,6 +5,7 @@ import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 import static org.opentmf.client.common.util.TokenUtil.WEB_CLIENT;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.reactive.api.GenericReactiveTmfClient;
@@ -18,6 +19,7 @@ import org.springframework.beans.factory.support.BeanDefinitionRegistryPostProce
 import org.springframework.beans.factory.support.RootBeanDefinition;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.context.properties.bind.Binder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.env.Environment;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -38,7 +40,7 @@ public class ReactiveTmfApiClientsAutoConfiguration {
     return new BeanDefinitionRegistryPostProcessor() {
 
       @Override
-      public void postProcessBeanDefinitionRegistry(@org.jspecify.annotations.NonNull BeanDefinitionRegistry registry)
+      public void postProcessBeanDefinitionRegistry(@NonNull BeanDefinitionRegistry registry)
           throws BeansException {
 
         TmfApiClientsConfig config = Binder.get(env)
@@ -83,7 +85,7 @@ public class ReactiveTmfApiClientsAutoConfiguration {
       }
 
       @Override
-      public void postProcessBeanFactory(@org.jspecify.annotations.NonNull ConfigurableListableBeanFactory beanFactory)
+      public void postProcessBeanFactory(@NonNull ConfigurableListableBeanFactory beanFactory)
           throws BeansException {
         // no-op
       }
@@ -91,8 +93,7 @@ public class ReactiveTmfApiClientsAutoConfiguration {
   }
 
   @Bean
-  public ReactiveTmfClientFactory reactiveTmfClientFactory(
-      org.springframework.context.ConfigurableApplicationContext ctx) {
+  public ReactiveTmfClientFactory reactiveTmfClientFactory(ConfigurableApplicationContext ctx) {
     return new ReactiveTmfClientFactory(ctx);
   }
 }

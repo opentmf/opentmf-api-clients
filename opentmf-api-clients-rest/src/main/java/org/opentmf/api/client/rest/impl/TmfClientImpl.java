@@ -11,11 +11,14 @@ import static org.opentmf.api.client.common.util.UriBuilderUtil.buildUri;
 import static org.opentmf.api.client.common.util.UriBuilderUtil.buildUriWithId;
 import static org.opentmf.api.client.common.util.UriBuilderUtil.withPagination;
 
+import com.jayway.jsonpath.JsonPath;
+import java.lang.reflect.Array;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.api.TmfClient;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
@@ -416,7 +419,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
     var ctx = toContext(pageable);
     var h = prepareGetDelete(headers(token, ctx));
 
-    Class<T[]> arrayType = (Class<T[]>) java.lang.reflect.Array.newInstance(type, 0).getClass();
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
     ResponseEntity<T[]> entity = withRetry(
         () -> restClient.get().uri(uri).headers(hh -> hh.addAll(h))
             .retrieve().toEntity(arrayType));
@@ -442,13 +445,13 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
       String token, TmfOffsetRequest req, Class<T> type) {
     List<Object> all = recursiveRetrieve(token, req, Object.class);
     String json = JacksonUtil.objectToJson(all);
-    List<T> result = com.jayway.jsonpath.JsonPath.read(json, req.getJsonFilter().getQuery());
+    List<T> result = JsonPath.read(json, req.getJsonFilter().getQuery());
     return result.stream()
         .map(o -> JacksonUtil.jsonToObject(JacksonUtil.objectToJson(o), type))
         .toList();
   }
 
-  private <T> T withRetry(java.util.function.Supplier<T> action) {
+  private <T> T withRetry(Supplier<T> action) {
     return SyncClientUtil.executeWithRetry(
         action,
         clientProperties.getNumRetries(),

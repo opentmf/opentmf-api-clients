@@ -5,6 +5,7 @@ import static org.opentmf.client.common.util.TokenUtil.REST_CLIENT;
 import static org.opentmf.client.common.util.TokenUtil.TOKEN_SERVICE;
 
 import lombok.extern.slf4j.Slf4j;
+import org.jspecify.annotations.NonNull;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.hub.api.TmfHubClient;
@@ -40,7 +41,7 @@ public class TmfHubAutoConfiguration {
     return new BeanDefinitionRegistryPostProcessor() {
 
       @Override
-      public void postProcessBeanDefinitionRegistry(@org.jspecify.annotations.NonNull BeanDefinitionRegistry registry)
+      public void postProcessBeanDefinitionRegistry(@NonNull BeanDefinitionRegistry registry)
           throws BeansException {
 
         TmfApiClientsConfig config = Binder.get(env)
@@ -82,7 +83,7 @@ public class TmfHubAutoConfiguration {
       }
 
       @Override
-      public void postProcessBeanFactory(@org.jspecify.annotations.NonNull ConfigurableListableBeanFactory beanFactory)
+      public void postProcessBeanFactory(@NonNull ConfigurableListableBeanFactory beanFactory)
           throws BeansException {
         // no-op
       }

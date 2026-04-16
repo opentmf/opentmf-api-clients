@@ -6,9 +6,11 @@ import static org.opentmf.api.client.common.util.TmfApiClientConstants.MEDIA_TYP
 import static org.opentmf.api.client.common.util.TmfApiClientConstants.MEDIA_TYPE_MERGE_PATCH;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.Consumer;
 import lombok.extern.slf4j.Slf4j;
+import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.StringUtils;
@@ -119,19 +121,24 @@ public final class HeaderUtil {
   /**
    * Builds a {@link Consumer Consumer&lt;HttpHeaders&gt;} that sets the Authorization header using
    * the given token type and token value, adds any fixed headers from {@code fixedHeaders}, and
-   * merges any request-context header parameters.
+   * merges any request-context header parameters. If neither the fixed headers nor the request
+   * context supplied an {@code Accept} header, defaults it to {@code application/json} — TMF APIs
+   * always speak JSON.
    */
   public static Consumer<HttpHeaders> headersConsumer(
       String tokenType,
       String token,
       Map<String, String> fixedHeaders,
-      org.opentmf.api.client.common.model.TmfRequestContext ctx) {
+      TmfRequestContext ctx) {
 
     return httpHeaders -> {
       httpHeaders.set(HttpHeaders.AUTHORIZATION, tokenType + " " + token);
       if (fixedHeaders != null) fixedHeaders.forEach(httpHeaders::add);
       if (ctx != null && ctx.getHeaderParameters() != null) {
         ctx.getHeaderParameters().forEach((k, values) -> values.forEach(v -> httpHeaders.add(k, v)));
+      }
+      if (!httpHeaders.containsHeader(HttpHeaders.ACCEPT)) {
+        httpHeaders.setAccept(List.of(MediaType.APPLICATION_JSON));
       }
     };
   }
