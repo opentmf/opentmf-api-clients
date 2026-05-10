@@ -400,6 +400,56 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   }
 
   // ==========================================================================
+  // COLLECTION JSON PATCH
+  // ==========================================================================
+
+  @Override public Mono<List<R>> patchCollection(JsonPatch jsonPatch) {
+    return patchCollection(jsonPatch, responseType);
+  }
+
+  @Override public Mono<List<R>> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx) {
+    return patchCollection(jsonPatch, ctx, responseType);
+  }
+
+  @Override public <T> Mono<List<T>> patchCollection(JsonPatch jsonPatch, Class<T> type) {
+    return patchCollection(jsonPatch, null, type);
+  }
+
+  @Override public <T> Mono<List<T>> patchCollection(
+      JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    return getToken(Scope.PATCH).flatMap(t -> patchCollectionWithToken(t, jsonPatch, ctx, type));
+  }
+
+  @Override public Mono<List<R>> patchCollectionWithToken(String token, JsonPatch jsonPatch) {
+    return patchCollectionWithToken(token, jsonPatch, responseType);
+  }
+
+  @Override public Mono<List<R>> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx) {
+    return patchCollectionWithToken(token, jsonPatch, ctx, responseType);
+  }
+
+  @Override public <T> Mono<List<T>> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, Class<T> type) {
+    return patchCollectionWithToken(token, jsonPatch, null, type);
+  }
+
+  @Override public <T> Mono<List<T>> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    Objects.requireNonNull(jsonPatch,
+        TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
+    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    var h = prepareAndValidateJsonPatch(headers(token, ctx));
+    return webClient.patch().uri(uri).headers(hh -> hh.addAll(h))
+        .bodyValue(jsonPatch.toJsonNode())
+        .retrieve()
+        .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
+        .bodyToFlux(type)
+        .collectList()
+        .retryWhen(retry());
+  }
+
+  // ==========================================================================
   // DELETE
   // ==========================================================================
 

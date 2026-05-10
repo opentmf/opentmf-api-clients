@@ -1,8 +1,10 @@
 package org.opentmf.api.client.reactive.helper;
 
 import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.mockserver.integration.ClientAndServer;
 import org.mockserver.model.HttpClassCallback;
 import org.mockserver.model.HttpRequest;
@@ -10,6 +12,7 @@ import org.mockserver.model.HttpResponse;
 import org.mockserver.model.Parameter;
 import org.opentmf.mockserver.callback.DynamicDeleteCallback;
 import org.opentmf.mockserver.callback.DynamicPostCallback;
+import org.springframework.http.HttpStatus;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -21,6 +24,7 @@ public final class MockServerUtils {
   private static ClientAndServer mockServer;
   private static String baseUrl;
   private static final JsonMapper MAPPER = JsonMapper.shared();
+  private static final AtomicInteger PATH_COUNTER = new AtomicInteger(1000);
 
   private MockServerUtils() {}
 
@@ -53,7 +57,7 @@ public final class MockServerUtils {
   }
 
   public static String randomPath() {
-    return "/tmf-api/test/v4/resource" + ThreadLocalRandom.current().nextInt(1000, 9999);
+    return "/tmf-api/test/v4/resource" + PATH_COUNTER.getAndIncrement();
   }
 
   // --- Dynamic callback registrations ---
@@ -103,6 +107,28 @@ public final class MockServerUtils {
             .withHeader("Content-Type", "application/json-patch+json")
     ).respond(
         HttpClassCallback.callback("org.opentmf.mockserver.callback.DynamicJsonPatchCallback")
+    );
+  }
+
+  public static void setUpCollectionJsonPatchCallback(
+      String path, String responseBody, HttpStatus status) {
+    mockServer.when(
+        request().withMethod("PATCH").withPath(path)
+            .withHeader("Content-Type", "application/json-patch+json")
+    ).respond(
+        response()
+            .withStatusCode(status.value())
+            .withHeader("Content-Type", "application/json")
+            .withBody(responseBody)
+    );
+  }
+
+  public static void setUpCollectionJsonPatchErrorCallback(String path, HttpStatus status) {
+    mockServer.when(
+        request().withMethod("PATCH").withPath(path)
+            .withHeader("Content-Type", "application/json-patch+json")
+    ).respond(
+        response().withStatusCode(status.value())
     );
   }
 

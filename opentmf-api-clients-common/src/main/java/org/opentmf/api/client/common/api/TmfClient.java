@@ -163,6 +163,27 @@ public interface TmfClient<C, U, R> {
 
   <T> T patchWithToken(String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
 
+  // --- COLLECTION JSON PATCH (auto-token) ---
+
+  List<R> patchCollection(JsonPatch jsonPatch);
+
+  List<R> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx);
+
+  <T> List<T> patchCollection(JsonPatch jsonPatch, Class<T> type);
+
+  <T> List<T> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
+
+  // --- COLLECTION JSON PATCH (with token) ---
+
+  List<R> patchCollectionWithToken(String token, JsonPatch jsonPatch);
+
+  List<R> patchCollectionWithToken(String token, JsonPatch jsonPatch, TmfRequestContext ctx);
+
+  <T> List<T> patchCollectionWithToken(String token, JsonPatch jsonPatch, Class<T> type);
+
+  <T> List<T> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
+
   // --- DELETE (auto-token) ---
 
   void delete(String id);

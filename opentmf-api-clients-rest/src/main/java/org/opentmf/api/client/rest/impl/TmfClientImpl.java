@@ -364,6 +364,53 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   // ==========================================================================
+  // COLLECTION JSON PATCH
+  // ==========================================================================
+
+  @Override public List<R> patchCollection(JsonPatch jsonPatch) {
+    return patchCollection(jsonPatch, responseType);
+  }
+
+  @Override public List<R> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx) {
+    return patchCollection(jsonPatch, ctx, responseType);
+  }
+
+  @Override public <T> List<T> patchCollection(JsonPatch jsonPatch, Class<T> type) {
+    return patchCollection(jsonPatch, null, type);
+  }
+
+  @Override public <T> List<T> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    return patchCollectionWithToken(getToken(Scope.PATCH), jsonPatch, ctx, type);
+  }
+
+  @Override public List<R> patchCollectionWithToken(String token, JsonPatch jsonPatch) {
+    return patchCollectionWithToken(token, jsonPatch, responseType);
+  }
+
+  @Override public List<R> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx) {
+    return patchCollectionWithToken(token, jsonPatch, ctx, responseType);
+  }
+
+  @Override public <T> List<T> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, Class<T> type) {
+    return patchCollectionWithToken(token, jsonPatch, null, type);
+  }
+
+  @SuppressWarnings("unchecked")
+  @Override public <T> List<T> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    Objects.requireNonNull(jsonPatch,
+        TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
+    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    var h = prepareAndValidateJsonPatch(headers(token, ctx));
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
+    T[] body = withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
+        .body(jsonPatch.toJsonNode()).retrieve().body(arrayType));
+    return body != null ? List.of(body) : List.of();
+  }
+
+  // ==========================================================================
   // DELETE
   // ==========================================================================
 

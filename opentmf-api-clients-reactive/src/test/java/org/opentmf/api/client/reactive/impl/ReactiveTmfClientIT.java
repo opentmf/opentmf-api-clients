@@ -21,10 +21,12 @@ import org.opentmf.api.client.reactive.helper.MockServerUtils;
 import org.opentmf.api.client.reactive.helper.MockTokenService;
 import org.opentmf.api.client.reactive.helper.TestResponseClass;
 import org.opentmf.api.client.reactive.helper.TestResponseModel;
+import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.commons.patch.JsonPatch;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -373,6 +375,104 @@ class ReactiveTmfClientIT {
           assertThat(res.getDescription()).isEqualTo("JSON-patched description");
         })
         .verifyComplete();
+  }
+
+  // --- COLLECTION JSON PATCH ---
+
+  @Test
+  void patchCollection_returnsListInOrder() {
+    String body = "["
+        + "{\"id\":\"a\",\"name\":\"A\"},"
+        + "{\"id\":\"b\",\"name\":\"B\"},"
+        + "{\"id\":\"c\",\"name\":\"C\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder()
+        .add("/", Map.of("name", "A"))
+        .add("/", Map.of("name", "B"))
+        .add("/", Map.of("name", "C"))
+        .build();
+
+    StepVerifier.create(client.patchCollection(jp))
+        .assertNext(list -> {
+          assertThat(list).hasSize(3);
+          assertThat(list.get(0).getId()).isEqualTo("a");
+          assertThat(list.get(1).getId()).isEqualTo("b");
+          assertThat(list.get(2).getId()).isEqualTo("c");
+          assertThat(list.get(0).getName()).isEqualTo("A");
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void patchCollection_withCustomReturnType() {
+    String body = "[{\"id\":\"x\",\"name\":\"X\",\"description\":\"d\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "X")).build();
+
+    StepVerifier.create(client.patchCollection(jp, TestResponseClass.class))
+        .assertNext(list -> {
+          assertThat(list).hasSize(1);
+          assertThat(list.get(0).getId()).isEqualTo("x");
+          assertThat(list.get(0).getDescription()).isEqualTo("d");
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void patchCollectionWithToken_useCallerSuppliedToken() {
+    String body = "[{\"id\":\"t\",\"name\":\"T\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "T")).build();
+
+    StepVerifier.create(client.patchCollectionWithToken("custom-token", jp))
+        .assertNext(list -> {
+          assertThat(list).hasSize(1);
+          assertThat(list.get(0).getId()).isEqualTo("t");
+        })
+        .verifyComplete();
+  }
+
+  @Test
+  void patchCollection_4xx_propagatesException() {
+    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.BAD_REQUEST);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+
+    StepVerifier.create(client.patchCollection(jp))
+        .expectErrorMatches(e -> e instanceof OpenTmfClientResponseException)
+        .verify();
+  }
+
+  @Test
+  void patchCollection_5xx_propagatesException() {
+    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.INTERNAL_SERVER_ERROR);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+
+    StepVerifier.create(client.patchCollection(jp))
+        .expectErrorMatches(e -> e instanceof OpenTmfClientResponseException)
+        .verify();
+  }
+
+  @Test
+  void patchCollection_emptyPatch_returnsEmptyList() {
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, "[]", HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().build();
+
+    StepVerifier.create(client.patchCollection(jp))
+        .assertNext(list -> assertThat(list).isEmpty())
+        .verifyComplete();
+  }
+
+  @Test
+  void patchCollection_nullPatch_throwsNpe() {
+    StepVerifier.create(client.patchCollection((JsonPatch) null))
+        .expectError(NullPointerException.class)
+        .verify();
   }
 
   // --- DELETE ---

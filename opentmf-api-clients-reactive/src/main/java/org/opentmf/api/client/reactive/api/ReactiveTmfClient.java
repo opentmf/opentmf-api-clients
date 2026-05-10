@@ -1,5 +1,6 @@
 package org.opentmf.api.client.reactive.api;
 
+import java.util.List;
 import org.opentmf.commons.patch.JsonPatch;
 import org.opentmf.api.client.common.model.TmfPage;
 import org.opentmf.api.client.common.model.TmfRequestContext;
@@ -163,6 +164,27 @@ public interface ReactiveTmfClient<C, U, R> {
   <T> Mono<T> patchWithToken(String token, String id, JsonPatch jsonPatch, Class<T> type);
 
   <T> Mono<T> patchWithToken(String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
+
+  // --- COLLECTION JSON PATCH (auto-token) ---
+
+  Mono<List<R>> patchCollection(JsonPatch jsonPatch);
+
+  Mono<List<R>> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx);
+
+  <T> Mono<List<T>> patchCollection(JsonPatch jsonPatch, Class<T> type);
+
+  <T> Mono<List<T>> patchCollection(JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
+
+  // --- COLLECTION JSON PATCH (with token) ---
+
+  Mono<List<R>> patchCollectionWithToken(String token, JsonPatch jsonPatch);
+
+  Mono<List<R>> patchCollectionWithToken(String token, JsonPatch jsonPatch, TmfRequestContext ctx);
+
+  <T> Mono<List<T>> patchCollectionWithToken(String token, JsonPatch jsonPatch, Class<T> type);
+
+  <T> Mono<List<T>> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
 
   // --- DELETE (auto-token) ---
 

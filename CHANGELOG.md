@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.7] - 2026-05-10
+
+### Added
+- Collection-level JSON Patch (`patchCollection` / `patchCollectionWithToken`) on both
+  the synchronous (`TmfClient`, RestClient impl) and reactive (`ReactiveTmfClient`,
+  WebClient impl) surfaces. Issues `PATCH` against the collection root (no `/{id}`)
+  with content-type `application/json-patch+json` and decodes a JSON array response
+  into `List<R>` (sync) / `Mono<List<R>>` (reactive). Supports the TMF v4
+  high-performance bulk-creation pattern. No `RestTemplate` implementation; no
+  `Flux<R>` overloads. Pure addition: no existing signatures change.
+
 ## [2.0.6] - 2026-04-16
 
 ### Added

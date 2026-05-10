@@ -26,8 +26,10 @@ import org.opentmf.api.client.rest.helper.TestResponseModel;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.commons.patch.JsonPatch;
 import org.springframework.data.domain.Sort;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 @SuppressWarnings("unchecked")
 class TmfClientIT {
@@ -318,6 +320,101 @@ class TmfClientIT {
     TestResponseModel res = client.patch(id, jsonPatch);
     assertThat(res.getId()).isEqualTo(id);
     assertThat(res.getDescription()).isEqualTo("JSON-patched description");
+  }
+
+  // --- COLLECTION JSON PATCH ---
+
+  @Test
+  void patchCollection_returnsListInOrder() {
+    String body = "["
+        + "{\"id\":\"a\",\"name\":\"A\"},"
+        + "{\"id\":\"b\",\"name\":\"B\"},"
+        + "{\"id\":\"c\",\"name\":\"C\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder()
+        .add("/", Map.of("name", "A"))
+        .add("/", Map.of("name", "B"))
+        .add("/", Map.of("name", "C"))
+        .build();
+
+    List<TestResponseModel> list = client.patchCollection(jp);
+    assertThat(list).hasSize(3);
+    assertThat(list.get(0).getId()).isEqualTo("a");
+    assertThat(list.get(1).getId()).isEqualTo("b");
+    assertThat(list.get(2).getId()).isEqualTo("c");
+    assertThat(list.get(0).getName()).isEqualTo("A");
+  }
+
+  @Test
+  void patchCollection_withCustomReturnType() {
+    String body = "[{\"id\":\"x\",\"name\":\"X\",\"description\":\"d\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "X")).build();
+
+    List<TestResponseClass> list = client.patchCollection(jp, TestResponseClass.class);
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getId()).isEqualTo("x");
+    assertThat(list.get(0).getDescription()).isEqualTo("d");
+  }
+
+  @Test
+  void patchCollectionWithToken_useCallerSuppliedToken() {
+    String body = "[{\"id\":\"t\",\"name\":\"T\"}]";
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "T")).build();
+
+    List<TestResponseModel> list = client.patchCollectionWithToken("custom-token", jp);
+    assertThat(list).hasSize(1);
+    assertThat(list.get(0).getId()).isEqualTo("t");
+  }
+
+  @Test
+  void patchCollection_4xx_propagatesException() {
+    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.BAD_REQUEST);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+
+    assertThatThrownBy(() -> client.patchCollection(jp))
+        .isInstanceOf(RestClientException.class);
+  }
+
+  @Test
+  void patchCollection_5xx_propagatesException() {
+    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.INTERNAL_SERVER_ERROR);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+
+    assertThatThrownBy(() -> client.patchCollection(jp))
+        .isInstanceOf(RestClientException.class);
+  }
+
+  @Test
+  void patchCollection_emptyPatch_returnsEmptyList() {
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, "[]", HttpStatus.OK);
+
+    JsonPatch jp = JsonPatch.builder().build();
+
+    List<TestResponseModel> list = client.patchCollection(jp);
+    assertThat(list).isEmpty();
+  }
+
+  @Test
+  void patchCollection_nullPatch_throwsNpe() {
+    assertThatThrownBy(() -> client.patchCollection((JsonPatch) null))
+        .isInstanceOf(NullPointerException.class);
+  }
+
+  @Test
+  void patchCollection_noContent_returnsEmptyList() {
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, "", HttpStatus.NO_CONTENT);
+
+    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+
+    List<TestResponseModel> list = client.patchCollection(jp);
+    assertThat(list).isEmpty();
   }
 
   // --- DELETE ---
