@@ -326,11 +326,7 @@ class TmfClientIT {
 
   @Test
   void patchCollection_returnsListInOrder() {
-    String body = "["
-        + "{\"id\":\"a\",\"name\":\"A\"},"
-        + "{\"id\":\"b\",\"name\":\"B\"},"
-        + "{\"id\":\"c\",\"name\":\"C\"}]";
-    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
 
     JsonPatch jp = JsonPatch.builder()
         .add("/", Map.of("name", "A"))
@@ -340,42 +336,42 @@ class TmfClientIT {
 
     List<TestResponseModel> list = client.patchCollection(jp);
     assertThat(list).hasSize(3);
-    assertThat(list.get(0).getId()).isEqualTo("a");
-    assertThat(list.get(1).getId()).isEqualTo("b");
-    assertThat(list.get(2).getId()).isEqualTo("c");
-    assertThat(list.get(0).getName()).isEqualTo("A");
+    assertThat(list).extracting(TestResponseModel::getName).containsExactly("A", "B", "C");
+    assertThat(list).extracting(TestResponseModel::getId).doesNotContainNull();
+    assertThat(list).extracting(TestResponseModel::getHref).doesNotContainNull();
   }
 
   @Test
   void patchCollection_withCustomReturnType() {
-    String body = "[{\"id\":\"x\",\"name\":\"X\",\"description\":\"d\"}]";
-    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
 
-    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "X")).build();
+    JsonPatch jp = JsonPatch.builder()
+        .add("/", Map.of("name", "X", "description", "d"))
+        .build();
 
     List<TestResponseClass> list = client.patchCollection(jp, TestResponseClass.class);
     assertThat(list).hasSize(1);
-    assertThat(list.get(0).getId()).isEqualTo("x");
+    assertThat(list.get(0).getName()).isEqualTo("X");
     assertThat(list.get(0).getDescription()).isEqualTo("d");
+    assertThat(list.get(0).getId()).isNotBlank();
   }
 
   @Test
   void patchCollectionWithToken_useCallerSuppliedToken() {
-    String body = "[{\"id\":\"t\",\"name\":\"T\"}]";
-    MockServerUtils.setUpCollectionJsonPatchCallback(path, body, HttpStatus.OK);
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
 
     JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "T")).build();
 
     List<TestResponseModel> list = client.patchCollectionWithToken("custom-token", jp);
     assertThat(list).hasSize(1);
-    assertThat(list.get(0).getId()).isEqualTo("t");
+    assertThat(list.get(0).getName()).isEqualTo("T");
   }
 
   @Test
-  void patchCollection_4xx_propagatesException() {
-    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.BAD_REQUEST);
+  void patchCollection_emptyPatch_returns400() {
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
 
-    JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
+    JsonPatch jp = JsonPatch.builder().build();
 
     assertThatThrownBy(() -> client.patchCollection(jp))
         .isInstanceOf(RestClientException.class);
@@ -383,22 +379,12 @@ class TmfClientIT {
 
   @Test
   void patchCollection_5xx_propagatesException() {
-    MockServerUtils.setUpCollectionJsonPatchErrorCallback(path, HttpStatus.INTERNAL_SERVER_ERROR);
+    MockServerUtils.setUpCollectionJsonPatchCallback(path, "", HttpStatus.INTERNAL_SERVER_ERROR);
 
     JsonPatch jp = JsonPatch.builder().add("/", Map.of("name", "A")).build();
 
     assertThatThrownBy(() -> client.patchCollection(jp))
         .isInstanceOf(RestClientException.class);
-  }
-
-  @Test
-  void patchCollection_emptyPatch_returnsEmptyList() {
-    MockServerUtils.setUpCollectionJsonPatchCallback(path, "[]", HttpStatus.OK);
-
-    JsonPatch jp = JsonPatch.builder().build();
-
-    List<TestResponseModel> list = client.patchCollection(jp);
-    assertThat(list).isEmpty();
   }
 
   @Test

@@ -108,6 +108,16 @@ public final class MockServerUtils {
     );
   }
 
+  public static void setUpDynamicJsonPatchCollectionCallback(String path) {
+    mockServer.when(
+        request().withMethod("PATCH").withPath(path)
+            .withHeader("Content-Type", "application/json-patch+json")
+    ).respond(
+        HttpClassCallback.callback(
+            "org.opentmf.mockserver.callback.DynamicJsonPatchCollectionCallback")
+    );
+  }
+
   public static void setUpCollectionJsonPatchCallback(
       String path, String responseBody, HttpStatus status) {
     mockServer.when(
@@ -118,15 +128,6 @@ public final class MockServerUtils {
             .withStatusCode(status.value())
             .withHeader("Content-Type", "application/json")
             .withBody(responseBody)
-    );
-  }
-
-  public static void setUpCollectionJsonPatchErrorCallback(String path, HttpStatus status) {
-    mockServer.when(
-        request().withMethod("PATCH").withPath(path)
-            .withHeader("Content-Type", "application/json-patch+json")
-    ).respond(
-        response().withStatusCode(status.value())
     );
   }
 
