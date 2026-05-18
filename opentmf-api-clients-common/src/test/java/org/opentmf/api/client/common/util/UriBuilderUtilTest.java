@@ -17,6 +17,10 @@ import org.springframework.util.LinkedMultiValueMap;
 
 class UriBuilderUtilTest {
 
+  private static final String COMPOSITE_ID = "PhysicalSimResourceSpecification:(version=1)";
+  private static final String EXPECTED_ENCODED_ID =
+      "PhysicalSimResourceSpecification%3A%28version%3D1%29";
+
   private ServerConfig server;
   private EndpointConfig endpoint;
 
@@ -174,5 +178,47 @@ class UriBuilderUtilTest {
         .build();
     URI uri = UriBuilderUtil.buildUriWithId(server, endpoint, "42", ctx);
     assertThat(uri.toString()).contains("filter=");
+  }
+
+  @Test
+  void buildUriWithId_compositeKey_encodesOnce() {
+    URI uri = UriBuilderUtil.buildUriWithId(server, endpoint, COMPOSITE_ID);
+    assertThat(uri.toString()).endsWith("/" + EXPECTED_ENCODED_ID);
+  }
+
+  @Test
+  void buildUriWithId_compositeKey_withCtx_encodesOnce() {
+    TmfRequestContext ctx = TmfRequestContext.builder().build();
+    URI uri = UriBuilderUtil.buildUriWithId(server, endpoint, COMPOSITE_ID, ctx);
+    assertThat(uri.toString()).endsWith("/" + EXPECTED_ENCODED_ID);
+  }
+
+  @Test
+  void withContext_preservesPathEncoding() {
+    URI base = UriBuilderUtil.buildUriWithId(server, endpoint, COMPOSITE_ID);
+    TmfRequestContext ctx = TmfRequestContext.builder()
+        .withServerJsonFilter("state=='active'")
+        .build();
+    URI result = UriBuilderUtil.withContext(base, ctx);
+    assertThat(result.toString()).contains("/" + EXPECTED_ENCODED_ID);
+    assertThat(result.toString()).contains("filter=");
+    assertThat(result.toString()).doesNotContain("%25");
+  }
+
+  @Test
+  void withContext_emptyCtx_preservesPathEncoding() {
+    URI base = UriBuilderUtil.buildUriWithId(server, endpoint, COMPOSITE_ID);
+    URI result = UriBuilderUtil.withContext(base, TmfRequestContext.builder().build());
+    assertThat(result.toString()).contains("/" + EXPECTED_ENCODED_ID);
+    assertThat(result.toString()).doesNotContain("%25");
+  }
+
+  @Test
+  void withPagination_preservesPathEncoding() {
+    URI base = UriBuilderUtil.buildUriWithId(server, endpoint, COMPOSITE_ID);
+    URI result = UriBuilderUtil.withPagination(base, TmfOffsetRequest.of(0, 10));
+    assertThat(result.toString()).contains("/" + EXPECTED_ENCODED_ID);
+    assertThat(result.toString()).contains("offset=0").contains("limit=10");
+    assertThat(result.toString()).doesNotContain("%25");
   }
 }

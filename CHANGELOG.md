@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.8] - 2026-05-18
+
+### Fixed
+- Fix double percent-encoding of resource path segments when
+  `UriBuilderUtil.withContext(...)` or `UriBuilderUtil.withPagination(...)` is applied to
+  a URI that already contains an encoded `{id}` (typically TMF composite keys like
+  `Spec:(version=1)`). Previously the terminal `.encode().build().toUri()` re-encoded the
+  already-encoded path, producing e.g. `%253A%2528version%253D1%2529` instead of
+  `%3A%28version%3D1%29`. The methods now pre-encode the appended query-parameter values
+  via `UriUtils.encodeQueryParam(...)` and call `.build(true).toUri()`, which preserves the
+  existing single encoding of the path.
+
 ## [2.0.7] - 2026-05-10
 
 ### Added

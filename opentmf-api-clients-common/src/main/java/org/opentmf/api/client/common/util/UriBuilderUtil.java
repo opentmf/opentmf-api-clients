@@ -7,6 +7,9 @@ import static org.opentmf.api.client.common.util.TmfApiClientConstants.QUERY_PAR
 import static org.opentmf.api.client.common.util.TmfApiClientConstants.QUERY_PARAM_SORT;
 
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
@@ -16,7 +19,10 @@ import org.opentmf.api.client.common.model.TmfOffsetRequest;
 import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 
 /**
  * URI construction helpers for TMF API clients.
@@ -91,17 +97,17 @@ public final class UriBuilderUtil {
         .queryParam(QUERY_PARAM_LIMIT, pageable.getPageSize());
 
     if (!pageable.getSort().isEmpty()) {
-      builder.queryParam(QUERY_PARAM_SORT, sortQuery(pageable.getSort()));
+      builder.queryParam(QUERY_PARAM_SORT, encodeValue(sortQuery(pageable.getSort())));
     }
 
     if (pageable instanceof TmfOffsetRequest req) {
-      applyServerFilter(builder, req.getJsonFilterType(), req.getJsonFilterQuery());
-      applyFields(builder, req.getFields());
+      applyServerFilterEncoded(builder, req.getJsonFilterType(), req.getJsonFilterQuery());
+      applyFieldsEncoded(builder, req.getFields());
       if (req.getQueryParameters() != null && !req.getQueryParameters().isEmpty()) {
-        builder.queryParams(req.getQueryParameters());
+        encodedQueryParams(req.getQueryParameters()).forEach(builder::queryParam);
       }
     }
-    return builder.encode().build().toUri();
+    return builder.build(true).toUri();
   }
 
   /**
@@ -110,12 +116,50 @@ public final class UriBuilderUtil {
   public static URI withContext(URI base, TmfRequestContext ctx) {
     if (ctx == null) return base;
     var builder = UriComponentsBuilder.fromUri(base);
-    applyServerFilter(builder, ctx.getJsonFilterType(), ctx.getJsonFilterQuery());
-    applyFields(builder, ctx.getFields());
-    return builder.encode().build().toUri();
+    applyServerFilterEncoded(builder, ctx.getJsonFilterType(), ctx.getJsonFilterQuery());
+    applyFieldsEncoded(builder, ctx.getFields());
+    return builder.build(true).toUri();
   }
 
   // --- private helpers ---
+
+  // withContext / withPagination append query params to a URI that already carries an
+  // encoded path (from buildUriWithId or buildUri). They terminate with .build(true).toUri()
+  // so UriComponentsBuilder does not re-encode that path (which would turn %3A into %253A
+  // for composite-key ids like Spec:(version=1)). .build(true) requires every value to be
+  // pre-encoded, which is why the helpers below run user-supplied query values through
+  // UriUtils.encodeQueryParam before handing them to the builder. Do not "simplify" by
+  // switching back to .encode().build() or by removing the encodeValue(...) calls — both
+  // reintroduce the double-encoding bug.
+  private static void applyServerFilterEncoded(
+      UriComponentsBuilder builder, JsonFilter.TYPE type, String query) {
+    if (type == JsonFilter.TYPE.SERVER && query != null) {
+      builder.queryParam(QUERY_PARAM_FILTER, encodeValue(query));
+    }
+  }
+
+  private static void applyFieldsEncoded(UriComponentsBuilder builder, Set<String> fields) {
+    if (fields != null && !fields.isEmpty()) {
+      builder.queryParam(QUERY_PARAM_FIELDS, encodeValue(String.join(",", fields)));
+    }
+  }
+
+  private static MultiValueMap<String, String> encodedQueryParams(
+      MultiValueMap<String, String> params) {
+    MultiValueMap<String, String> out = new LinkedMultiValueMap<>(params.size());
+    params.forEach((key, values) -> {
+      List<String> encoded = new ArrayList<>(values.size());
+      for (String v : values) {
+        encoded.add(v == null ? null : encodeValue(v));
+      }
+      out.put(key, encoded);
+    });
+    return out;
+  }
+
+  private static String encodeValue(String raw) {
+    return UriUtils.encodeQueryParam(raw, StandardCharsets.UTF_8);
+  }
 
   private static void applyServerFilter(
       UriComponentsBuilder builder, JsonFilter.TYPE type, String query) {
