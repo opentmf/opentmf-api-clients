@@ -184,6 +184,26 @@ public interface TmfClient<C, U, R> {
   <T> List<T> patchCollectionWithToken(
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
 
+  // --- PUT (auto-token) ---
+
+  R put(String id, U obj);
+
+  R put(String id, U obj, TmfRequestContext ctx);
+
+  <T> T put(String id, U obj, Class<T> type);
+
+  <T> T put(String id, U obj, TmfRequestContext ctx, Class<T> type);
+
+  // --- PUT (with token) ---
+
+  R putWithToken(String token, String id, U obj);
+
+  R putWithToken(String token, String id, U obj, TmfRequestContext ctx);
+
+  <T> T putWithToken(String token, String id, U obj, Class<T> type);
+
+  <T> T putWithToken(String token, String id, U obj, TmfRequestContext ctx, Class<T> type);
+
   // --- DELETE (auto-token) ---
 
   void delete(String id);

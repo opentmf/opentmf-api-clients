@@ -411,6 +411,47 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   // ==========================================================================
+  // PUT
+  // ==========================================================================
+
+  @Override public R put(String id, U obj) {
+    return put(id, obj, responseType);
+  }
+
+  @Override public R put(String id, U obj, TmfRequestContext ctx) {
+    return put(id, obj, ctx, responseType);
+  }
+
+  @Override public <T> T put(String id, U obj, Class<T> type) {
+    return put(id, obj, null, type);
+  }
+
+  @Override public <T> T put(String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return putWithToken(getToken(Scope.PUT), id, obj, ctx, type);
+  }
+
+  @Override public R putWithToken(String token, String id, U obj) {
+    return putWithToken(token, id, obj, responseType);
+  }
+
+  @Override public R putWithToken(String token, String id, U obj, TmfRequestContext ctx) {
+    return putWithToken(token, id, obj, ctx, responseType);
+  }
+
+  @Override public <T> T putWithToken(String token, String id, U obj, Class<T> type) {
+    return putWithToken(token, id, obj, null, type);
+  }
+
+  @Override public <T> T putWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
+    return withRetry(() -> restClient.put().uri(uri).headers(hh -> hh.addAll(h))
+        .body(obj).retrieve().body(type));
+  }
+
+  // ==========================================================================
   // DELETE
   // ==========================================================================
 

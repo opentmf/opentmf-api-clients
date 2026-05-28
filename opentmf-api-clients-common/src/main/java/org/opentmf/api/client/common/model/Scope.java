@@ -10,6 +10,7 @@ public enum Scope {
   GET("get"),
   LIST("list"),
   POST("post"),
+  PUT("put"),
   PATCH("patch"),
   DELETE("delete");
 

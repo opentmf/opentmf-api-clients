@@ -29,6 +29,7 @@ import org.springframework.validation.annotation.Validated;
  *             get: GET_ORDER
  *             list: LIST_ORDER
  *             post: POST_ORDER
+ *             put: PUT_ORDER
  *             patch: PATCH_ORDER
  *             delete: DELETE_ORDER
  * }</pre>

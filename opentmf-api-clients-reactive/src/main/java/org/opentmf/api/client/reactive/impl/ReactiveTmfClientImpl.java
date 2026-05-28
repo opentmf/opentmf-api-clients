@@ -450,6 +450,51 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   }
 
   // ==========================================================================
+  // PUT
+  // ==========================================================================
+
+  @Override public Mono<R> put(String id, U obj) {
+    return put(id, obj, responseType);
+  }
+
+  @Override public Mono<R> put(String id, U obj, TmfRequestContext ctx) {
+    return put(id, obj, ctx, responseType);
+  }
+
+  @Override public <T> Mono<T> put(String id, U obj, Class<T> type) {
+    return put(id, obj, null, type);
+  }
+
+  @Override public <T> Mono<T> put(String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return getToken(Scope.PUT).flatMap(t -> putWithToken(t, id, obj, ctx, type));
+  }
+
+  @Override public Mono<R> putWithToken(String token, String id, U obj) {
+    return putWithToken(token, id, obj, responseType);
+  }
+
+  @Override public Mono<R> putWithToken(String token, String id, U obj, TmfRequestContext ctx) {
+    return putWithToken(token, id, obj, ctx, responseType);
+  }
+
+  @Override public <T> Mono<T> putWithToken(String token, String id, U obj, Class<T> type) {
+    return putWithToken(token, id, obj, null, type);
+  }
+
+  @Override public <T> Mono<T> putWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
+    return webClient.put().uri(uri).headers(hh -> hh.addAll(h))
+        .bodyValue(obj)
+        .retrieve()
+        .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
+        .bodyToMono(type)
+        .retryWhen(retry());
+  }
+
+  // ==========================================================================
   // DELETE
   // ==========================================================================
 

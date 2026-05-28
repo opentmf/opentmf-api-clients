@@ -186,6 +186,26 @@ public interface ReactiveTmfClient<C, U, R> {
   <T> Mono<List<T>> patchCollectionWithToken(
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type);
 
+  // --- PUT (auto-token) ---
+
+  Mono<R> put(String id, U obj);
+
+  Mono<R> put(String id, U obj, TmfRequestContext ctx);
+
+  <T> Mono<T> put(String id, U obj, Class<T> type);
+
+  <T> Mono<T> put(String id, U obj, TmfRequestContext ctx, Class<T> type);
+
+  // --- PUT (with token) ---
+
+  Mono<R> putWithToken(String token, String id, U obj);
+
+  Mono<R> putWithToken(String token, String id, U obj, TmfRequestContext ctx);
+
+  <T> Mono<T> putWithToken(String token, String id, U obj, Class<T> type);
+
+  <T> Mono<T> putWithToken(String token, String id, U obj, TmfRequestContext ctx, Class<T> type);
+
   // --- DELETE (auto-token) ---
 
   Mono<Void> delete(String id);

@@ -142,6 +142,7 @@ opentmf:
             get: ORDER_GET
             list: ORDER_LIST
             post: ORDER_CREATE
+            put: ORDER_REPLACE
             patch: ORDER_PATCH
             delete: ORDER_DELETE
 ```

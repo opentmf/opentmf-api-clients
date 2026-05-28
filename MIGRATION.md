@@ -53,3 +53,12 @@ separate library and no longer reactive-only.
 
 See the [Hub Client](README.md#hub-client) section in the README for the full configuration
 and usage examples.
+
+---
+
+## New since 2.0.9: `PUT` verb
+
+Both `TmfClient` and `ReactiveTmfClient` now expose a `put(id, body, ...)` /
+`putWithToken(token, id, body, ...)` family alongside the existing CRUD verbs. Use it for
+TMF-adjacent endpoints that mandate full-body replace (e.g. re-registering an adapter).
+Add a `put: <scope>` row under `endpoints.<ep>.scopes` to bind a dedicated OAuth scope.

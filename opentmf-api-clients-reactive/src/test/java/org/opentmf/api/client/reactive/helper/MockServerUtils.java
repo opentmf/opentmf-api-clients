@@ -143,6 +143,17 @@ public final class MockServerUtils {
     );
   }
 
+  public static void setUpDynamicPutCallback(String path) {
+    mockServer.when(
+        request().withMethod("PUT")
+            .withPath(path + "/{id}")
+            .withPathParameter(Parameter.param("id", ".*"))
+            .withHeader("Content-Type", "application/json")
+    ).respond(
+        HttpClassCallback.callback("org.opentmf.mockserver.callback.DynamicPutCallback")
+    );
+  }
+
   public static void setUpAllDynamicCallbacks(String path) {
     setUpDynamicPostCallback(path);
     setUpDynamicGetCallback(path);

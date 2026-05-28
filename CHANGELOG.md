@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.0.9] - 2026-05-28
+
+### Added
+- `PUT` verb on both the synchronous (`TmfClient`, RestClient impl) and reactive
+  (`ReactiveTmfClient`, WebClient impl) surfaces. Eight overloads per interface (4
+  auto-token + 4 with-token), mirroring the existing merge-patch family. Issues
+  `PUT /{endpoint}/{id}` with content-type `application/json` against the same URI
+  + header + retry machinery used by `POST` / `PATCH`. Pure addition: no existing
+  signatures change.
+- New `Scope.PUT` enum value (`"put"`) so per-endpoint OAuth scope maps can carry a
+  dedicated `put:` entry. Fully additive; existing configurations are unaffected.
+
+### Changed
+- Bumped `opentmf-mockserver` (test scope) to 2.1.4 for the new `DynamicPutCallback`,
+  used by the PUT integration tests.
+
 ## [2.0.8] - 2026-05-18
 
 ### Fixed

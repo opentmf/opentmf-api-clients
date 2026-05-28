@@ -64,6 +64,7 @@ class TmfClientIT {
     scopes.put(Scope.GET, "GET_SCOPE");
     scopes.put(Scope.LIST, "LIST_SCOPE");
     scopes.put(Scope.POST, "POST_SCOPE");
+    scopes.put(Scope.PUT, "PUT_SCOPE");
     scopes.put(Scope.PATCH, "PATCH_SCOPE");
     scopes.put(Scope.DELETE, "DELETE_SCOPE");
     endpointConfig.setScopes(scopes);
@@ -401,6 +402,68 @@ class TmfClientIT {
 
     List<TestResponseModel> list = client.patchCollection(jp);
     assertThat(list).isEmpty();
+  }
+
+  // --- PUT ---
+
+  @Test
+  void put_replacesResource() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    Map<String, Object> replacement = Map.of(
+        "name", "Replaced", "description", "Replaced description");
+
+    TestResponseModel res = client.put(id, replacement);
+    assertThat(res).isNotNull();
+    assertThat(res.getId()).isEqualTo(id);
+    assertThat(res.getName()).isEqualTo("Replaced");
+    assertThat(res.getDescription()).isEqualTo("Replaced description");
+  }
+
+  @Test
+  void put_withRequestContext() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+    TmfRequestContext ctx = TmfRequestContext.builder()
+        .withHeaderValues("X-Custom", "header-val")
+        .build();
+
+    TestResponseModel res = client.put(id, Map.of("name", "Replaced"), ctx);
+    assertThat(res.getId()).isEqualTo(id);
+    assertThat(res.getName()).isEqualTo("Replaced");
+  }
+
+  @Test
+  void put_withCustomReturnType() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    TestResponseClass res = client.put(id,
+        Map.of("name", "Replaced", "description", "rd"), TestResponseClass.class);
+    assertThat(res.getId()).isEqualTo(id);
+    assertThat(res.getName()).isEqualTo("Replaced");
+    assertThat(res.getDescription()).isEqualTo("rd");
+  }
+
+  @Test
+  void putWithToken_useCallerSuppliedToken() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    TestResponseModel res = client.putWithToken("custom-token", id, Map.of("name", "Replaced"));
+    assertThat(res.getId()).isEqualTo(id);
+    assertThat(res.getName()).isEqualTo("Replaced");
+  }
+
+  @Test
+  void put_nullBody_throwsNullPointerException() {
+    assertThatThrownBy(() -> client.put("put-id", null, TestResponseModel.class))
+        .isInstanceOf(NullPointerException.class);
   }
 
   // --- DELETE ---
