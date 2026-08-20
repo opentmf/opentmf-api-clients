@@ -211,8 +211,14 @@
             <configuration>
               <rules>
                 <requireMavenVersion>
-                  <version>3.6.3</version>
+                  <version>[3.9,3.10)</version>
+                  <message>This project must be built with Maven 3.9.x.</message>
                 </requireMavenVersion>
+                <requireJavaVersion>
+                  <version>[17,18)</version>
+                  <message>This project must be built with JDK 17. Newer JDKs (23+) disable
+                    implicit annotation processing, silently breaking Lombok.</message>
+                </requireJavaVersion>
               </rules>
             </configuration>
           </execution>

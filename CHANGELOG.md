@@ -28,6 +28,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   (`(TmfRequestContext) null`) because of the new `SubResourcePath` overload.
   Binary compatibility is unaffected; the typed clients' public API is unaffected.
 - Bumped the Spring Boot BOM to 4.1.1 and `opentmf-http-clients` to 2.1.7.
+- Building from source now requires JDK 17 and Maven 3.9.x, enforced by
+  maven-enforcer-plugin. JDK 23+ silently breaks Lombok annotation processing;
+  the enforcer turns that into an explicit failure.
 
 ## [2.0.9] - 2026-05-28
 
