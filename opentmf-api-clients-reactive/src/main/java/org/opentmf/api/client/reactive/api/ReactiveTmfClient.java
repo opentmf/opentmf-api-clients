@@ -25,6 +25,34 @@ import reactor.core.publisher.Mono;
  */
 public interface ReactiveTmfClient<C, U, R> {
 
+  // --- SUB-RESOURCE ---
+
+  /**
+   * Returns a derived generic client scoped to a nested path under this client's endpoint.
+   * Every verb of the derived client operates against {@code endpointPath + template}, with each
+   * {@code {name}} placeholder replaced by the corresponding element of {@code vars}, in order.
+   *
+   * <p>Example: {@code orderClient.sub("/{orderId}/action/{action}/item", orderId, action)
+   * .get(itemId, Item.class)} issues {@code GET /order/o1/action/cancel/item/it7}.
+   *
+   * <p><b>The template must be a compile-time constant.</b> Never build it by concatenating
+   * runtime data — every runtime value belongs in {@code vars}, where it is expanded as a URI
+   * template variable and strictly percent-encoded. A value containing {@code /}, {@code :} or a
+   * brace cannot inject or break the path. Only simple {@code {name}} placeholders are supported;
+   * {@code {name:regex}} is rejected.
+   *
+   * <p>The derived client inherits this endpoint's OAuth scopes, fixed headers and transport.
+   * Calling {@code sub} on an already-derived client appends to its path, so depth is unbounded.
+   * This method only assembles a client and issues no request, hence the non-reactive signature.
+   *
+   * @param template the constant path template, e.g. {@code "/{orderId}/action/{action}/item"}
+   * @param vars one value per {@code {name}} placeholder, in order of occurrence
+   * @return a derived generic client scoped to the nested path
+   * @throws IllegalArgumentException if the template is invalid or the number of placeholders
+   *     does not match {@code vars.length} — validated eagerly, before any request is issued
+   */
+  GenericReactiveTmfClient sub(String template, Object... vars);
+
   // --- GET (auto-token) ---
 
   Mono<R> get(String id);

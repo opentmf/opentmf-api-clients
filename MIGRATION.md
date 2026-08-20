@@ -56,6 +56,14 @@ and usage examples.
 
 ---
 
+## New since 2.1.0: sub-resource paths
+
+`TmfClient` and `ReactiveTmfClient` now expose
+`sub(String template, Object... vars)`, returning a derived generic client scoped to a nested
+path (e.g. `/order/{orderId}/action/{action}/item`). This is new surface with no v1
+equivalent — the predecessor library could not express nested endpoint paths at all. See the
+[Sub-resource paths](README.md#sub-resource-paths) section in the README.
+
 ## New since 2.0.9: `PUT` verb
 
 Both `TmfClient` and `ReactiveTmfClient` now expose a `put(id, body, ...)` /

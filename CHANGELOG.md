@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2.1.0] - 2026-08-20
+
+### Added
+- Sub-resource path support on both the synchronous (`TmfClient`) and reactive
+  (`ReactiveTmfClient`) surfaces via a new `sub(String template, Object... vars)`
+  method. Returns a derived generic client scoped to a nested path, so every
+  existing verb — get, list, listAll, listPaged, post, put, patch, delete — works
+  against it unchanged. Supports arbitrary depth, e.g.
+  `orderClient.sub("/{orderId}/action/{action}/item", orderId, action).get(itemId, Item.class)`
+  issues `GET /order/{orderId}/action/{action}/item/{itemId}`. Path variables are
+  bound as URI template variables and strictly encoded, so a value containing `/`,
+  `:` or `{` cannot inject or break the path. Template/argument arity is validated
+  eagerly, before any request is issued.
+- New immutable value type `SubResourcePath` in the common module, plus
+  `SubResourcePath`-accepting overloads of the `UriBuilderUtil` builders. The
+  pre-existing builder methods are untouched; with an empty suffix the new
+  overloads delegate to them, so existing URI construction is byte-identical.
+
+### Changed
+- Direct callers of `UriBuilderUtil.buildUriWithId(server, endpoint, id, null)` that pass a
+  **null literal** as the fourth argument must now cast it
+  (`(TmfRequestContext) null`) because of the new `SubResourcePath` overload.
+  Binary compatibility is unaffected; the typed clients' public API is unaffected.
+
 ## [2.0.9] - 2026-05-28
 
 ### Added

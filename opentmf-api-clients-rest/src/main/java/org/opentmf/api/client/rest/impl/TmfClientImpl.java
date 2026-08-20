@@ -20,12 +20,14 @@ import java.util.Objects;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
+import org.opentmf.api.client.common.api.GenericTmfClient;
 import org.opentmf.api.client.common.api.TmfClient;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.JsonFilter;
 import org.opentmf.api.client.common.model.OffsetPage;
 import org.opentmf.api.client.common.model.Scope;
+import org.opentmf.api.client.common.model.SubResourcePath;
 import org.opentmf.api.client.common.model.TmfOffsetRequest;
 import org.opentmf.api.client.common.model.TmfPage;
 import org.opentmf.api.client.common.model.TmfRequestContext;
@@ -58,6 +60,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   private final SyncTokenService tokenService;
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
+  private final SubResourcePath subPath;
 
   public TmfClientImpl(
       EndpointConfig endpointConfig,
@@ -66,12 +69,34 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
       SyncTokenService tokenService,
       ClientProperties clientProperties,
       Class<R> responseType) {
+    this(endpointConfig, serverConfig, restClient, tokenService, clientProperties, responseType,
+        SubResourcePath.none());
+  }
+
+  public TmfClientImpl(
+      EndpointConfig endpointConfig,
+      ServerConfig serverConfig,
+      RestClient restClient,
+      SyncTokenService tokenService,
+      ClientProperties clientProperties,
+      Class<R> responseType,
+      SubResourcePath subPath) {
     this.endpointConfig   = Objects.requireNonNull(endpointConfig);
     this.serverConfig     = Objects.requireNonNull(serverConfig);
     this.restClient       = Objects.requireNonNull(restClient);
     this.tokenService     = Objects.requireNonNull(tokenService);
     this.clientProperties = Objects.requireNonNull(clientProperties);
     this.responseType     = Objects.requireNonNull(responseType);
+    this.subPath          = Objects.requireNonNull(subPath);
+  }
+
+  // ==========================================================================
+  // SUB-RESOURCE
+  // ==========================================================================
+
+  @Override public GenericTmfClient sub(String template, Object... vars) {
+    return new GenericTmfClientImpl(endpointConfig, serverConfig, restClient, tokenService,
+        clientProperties, subPath.append(template, vars));
   }
 
   // ==========================================================================
@@ -123,7 +148,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public <T> T getWithToken(String token, String id, TmfRequestContext ctx, Class<T> type) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return withRetry(() -> restClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve().body(type));
@@ -275,7 +300,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T postWithToken(String token, C obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return withRetry(() -> restClient.post().uri(uri).headers(hh -> hh.addAll(h))
         .body(obj).retrieve().body(type));
@@ -315,7 +340,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T patchWithToken(String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateMergePatch(headers(token, ctx));
     return withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .body(obj).retrieve().body(type));
@@ -357,7 +382,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
       String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     return withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .body(jsonPatch.toJsonNode()).retrieve().body(type));
@@ -402,7 +427,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
     T[] body = withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
@@ -445,7 +470,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   @Override public <T> T putWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return withRetry(() -> restClient.put().uri(uri).headers(hh -> hh.addAll(h))
         .body(obj).retrieve().body(type));
@@ -476,7 +501,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public void deleteWithToken(String token, String id, TmfRequestContext ctx) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     withRetry(() -> { restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve().toBodilessEntity(); return null; });
@@ -488,7 +513,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T deleteWithToken(
       String token, String id, Class<T> type, TmfRequestContext ctx) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return withRetry(() -> restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve().body(type));
@@ -501,7 +526,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   @SuppressWarnings("unchecked")
   private <T> TmfPage<List<T>> retrieveSinglePageWithResponse(
       String token, Pageable pageable, Class<T> type) {
-    URI base = buildBaseUri(serverConfig, endpointConfig);
+    URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
     URI uri = withPagination(base, pageable);
 
     var ctx = toContext(pageable);

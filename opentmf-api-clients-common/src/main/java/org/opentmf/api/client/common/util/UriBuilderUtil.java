@@ -15,6 +15,7 @@ import java.util.Set;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.JsonFilter;
+import org.opentmf.api.client.common.model.SubResourcePath;
 import org.opentmf.api.client.common.model.TmfOffsetRequest;
 import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.springframework.data.domain.Pageable;
@@ -41,6 +42,24 @@ public final class UriBuilderUtil {
         .toUri();
   }
 
+  /**
+   * Builds the base collection URI with a sub-resource suffix appended after the endpoint path.
+   * With an empty suffix, delegates to {@link #buildBaseUri(ServerConfig, EndpointConfig)} so the
+   * zero-suffix path is byte-identical to today's behaviour.
+   */
+  public static URI buildBaseUri(ServerConfig server, EndpointConfig endpoint,
+      SubResourcePath sub) {
+    if (sub.isEmpty()) {
+      return buildBaseUri(server, endpoint);
+    }
+    return UriComponentsBuilder
+        .fromUriString(server.getBaseUrl())
+        .path(server.getContextPath())
+        .path(endpoint.getPath())
+        .path(sub.template())
+        .build(sub.vars());
+  }
+
   /** Builds a resource URI with {@code /{id}} appended. */
   public static URI buildUriWithId(ServerConfig server, EndpointConfig endpoint, String id) {
     Objects.requireNonNull(id, TmfApiClientConstants.ERR_NULL_ID);
@@ -50,6 +69,26 @@ public final class UriBuilderUtil {
         .path(endpoint.getPath())
         .path("/{id}")
         .build(id);
+  }
+
+  /**
+   * Builds a resource URI with a sub-resource suffix between the endpoint path and {@code /{id}}.
+   * With an empty suffix, delegates to {@link #buildUriWithId(ServerConfig, EndpointConfig,
+   * String)} so the zero-suffix path is byte-identical to today's behaviour.
+   */
+  public static URI buildUriWithId(
+      ServerConfig server, EndpointConfig endpoint, String id, SubResourcePath sub) {
+    if (sub.isEmpty()) {
+      return buildUriWithId(server, endpoint, id);
+    }
+    Objects.requireNonNull(id, TmfApiClientConstants.ERR_NULL_ID);
+    return UriComponentsBuilder
+        .fromUriString(server.getBaseUrl())
+        .path(server.getContextPath())
+        .path(endpoint.getPath())
+        .path(sub.template())
+        .path("/{id}")
+        .build(sub.varsWith(id));
   }
 
   /**
@@ -73,6 +112,34 @@ public final class UriBuilderUtil {
   }
 
   /**
+   * Builds a resource URI with a sub-resource suffix, {@code /{id}} and optional
+   * TmfRequestContext query params. With an empty suffix, delegates to
+   * {@link #buildUriWithId(ServerConfig, EndpointConfig, String, TmfRequestContext)} so the
+   * zero-suffix path is byte-identical to today's behaviour.
+   */
+  public static URI buildUriWithId(
+      ServerConfig server, EndpointConfig endpoint, String id, TmfRequestContext ctx,
+      SubResourcePath sub) {
+    if (sub.isEmpty()) {
+      return buildUriWithId(server, endpoint, id, ctx);
+    }
+    Objects.requireNonNull(id, TmfApiClientConstants.ERR_NULL_ID);
+    var builder = UriComponentsBuilder
+        .fromUriString(server.getBaseUrl())
+        .path(server.getContextPath())
+        .path(endpoint.getPath())
+        .path(sub.template())
+        .queryParams(ctx != null ? ctx.getQueryParameters() : null)
+        .path("/{id}");
+
+    if (ctx != null) {
+      applyServerFilter(builder, ctx.getJsonFilterType(), ctx.getJsonFilterQuery());
+      applyFields(builder, ctx.getFields());
+    }
+    return builder.encode().build(sub.varsWith(id));
+  }
+
+  /**
    * Builds a collection URI with optional TmfRequestContext query params.
    */
   public static URI buildUri(
@@ -85,6 +152,26 @@ public final class UriBuilderUtil {
         .encode()
         .build()
         .toUri();
+  }
+
+  /**
+   * Builds a collection URI with a sub-resource suffix and optional TmfRequestContext query
+   * params. With an empty suffix, delegates to {@link #buildUri(ServerConfig, EndpointConfig,
+   * TmfRequestContext)} so the zero-suffix path is byte-identical to today's behaviour.
+   */
+  public static URI buildUri(
+      ServerConfig server, EndpointConfig endpoint, TmfRequestContext ctx, SubResourcePath sub) {
+    if (sub.isEmpty()) {
+      return buildUri(server, endpoint, ctx);
+    }
+    return UriComponentsBuilder
+        .fromUriString(server.getBaseUrl())
+        .path(server.getContextPath())
+        .path(endpoint.getPath())
+        .path(sub.template())
+        .queryParams(ctx != null ? ctx.getQueryParameters() : null)
+        .encode()
+        .build(sub.vars());
   }
 
   /**

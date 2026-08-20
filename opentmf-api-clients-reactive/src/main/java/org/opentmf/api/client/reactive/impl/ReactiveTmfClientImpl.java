@@ -22,11 +22,13 @@ import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.JsonFilter;
 import org.opentmf.api.client.common.model.OffsetPage;
 import org.opentmf.api.client.common.model.Scope;
+import org.opentmf.api.client.common.model.SubResourcePath;
 import org.opentmf.api.client.common.model.TmfOffsetRequest;
 import org.opentmf.api.client.common.model.TmfPage;
 import org.opentmf.api.client.common.model.TmfRequestContext;
 import org.opentmf.api.client.common.util.ResponseHeaderUtil;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
+import org.opentmf.api.client.reactive.api.GenericReactiveTmfClient;
 import org.opentmf.api.client.reactive.api.ReactiveTmfClient;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
@@ -64,6 +66,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   private final TokenService tokenService;
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
+  private final SubResourcePath subPath;
 
   public ReactiveTmfClientImpl(
       EndpointConfig endpointConfig,
@@ -72,12 +75,34 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
       TokenService tokenService,
       ClientProperties clientProperties,
       Class<R> responseType) {
+    this(endpointConfig, serverConfig, webClient, tokenService, clientProperties, responseType,
+        SubResourcePath.none());
+  }
+
+  public ReactiveTmfClientImpl(
+      EndpointConfig endpointConfig,
+      ServerConfig serverConfig,
+      WebClient webClient,
+      TokenService tokenService,
+      ClientProperties clientProperties,
+      Class<R> responseType,
+      SubResourcePath subPath) {
     this.endpointConfig  = Objects.requireNonNull(endpointConfig);
     this.serverConfig    = Objects.requireNonNull(serverConfig);
     this.webClient       = Objects.requireNonNull(webClient);
     this.tokenService    = Objects.requireNonNull(tokenService);
     this.clientProperties = Objects.requireNonNull(clientProperties);
     this.responseType    = Objects.requireNonNull(responseType);
+    this.subPath         = Objects.requireNonNull(subPath);
+  }
+
+  // ==========================================================================
+  // SUB-RESOURCE
+  // ==========================================================================
+
+  @Override public GenericReactiveTmfClient sub(String template, Object... vars) {
+    return new GenericReactiveTmfClientImpl(endpointConfig, serverConfig, webClient, tokenService,
+        clientProperties, subPath.append(template, vars));
   }
 
   // ==========================================================================
@@ -137,7 +162,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> getWithToken(
       String token, String id, TmfRequestContext ctx, Class<T> type) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
@@ -295,7 +320,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   @Override public <T> Mono<T> postWithToken(
       String token, C obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return webClient.post().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(obj)
@@ -340,7 +365,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   @Override public <T> Mono<T> patchWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateMergePatch(headers(token, ctx));
     return webClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(obj)
@@ -389,7 +414,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
       String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     return webClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(jsonPatch.toJsonNode())
@@ -438,7 +463,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUri(serverConfig, endpointConfig, ctx);
+    URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     return webClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(jsonPatch.toJsonNode())
@@ -484,7 +509,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   @Override public <T> Mono<T> putWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return webClient.put().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(obj)
@@ -519,7 +544,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   }
 
   @Override public Mono<Void> deleteWithToken(String token, String id, TmfRequestContext ctx) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
@@ -535,7 +560,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> deleteWithToken(
       String token, String id, Class<T> type, TmfRequestContext ctx) {
-    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx);
+    URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
@@ -550,7 +575,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   private <T> Mono<TmfPage<Flux<T>>> retrieveSinglePageWithResponse(
       String token, Pageable pageable, Class<T> type) {
-    URI base = buildBaseUri(serverConfig, endpointConfig);
+    URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
     URI uri = withPagination(base, pageable);
 
     var h = prepareGetDelete(headers(token, toContext(pageable)));

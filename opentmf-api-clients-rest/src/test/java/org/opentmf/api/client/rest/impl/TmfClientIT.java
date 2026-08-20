@@ -2,8 +2,10 @@ package org.opentmf.api.client.rest.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockserver.model.HttpRequest.request;
 
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -13,6 +15,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.Scope;
@@ -24,6 +27,7 @@ import org.opentmf.api.client.rest.helper.MockSyncTokenService;
 import org.opentmf.api.client.rest.helper.TestResponseClass;
 import org.opentmf.api.client.rest.helper.TestResponseModel;
 import org.opentmf.client.common.model.ClientProperties;
+import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.commons.patch.JsonPatch;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
@@ -697,5 +701,152 @@ class TmfClientIT {
 
     // DELETE
     client.delete(id);
+  }
+
+  // --- SUB-RESOURCE ---
+
+  private static final String SUB_TEMPLATE = "/{orderId}/action/{action}/item";
+
+  private String nestedPath() {
+    return path + "/o1/action/cancel/item";
+  }
+
+  @Test
+  void sub_get_hitsNestedPath() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+    String id = MockServerUtils.addDataToCache(nested, MockServerUtils.getTestData());
+
+    TestResponseModel res =
+        client.sub(SUB_TEMPLATE, "o1", "cancel").get(id, TestResponseModel.class);
+
+    assertThat(res.getId()).isEqualTo(id);
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getPath().getValue()).isEqualTo(nested + "/" + id);
+  }
+
+  @Test
+  void sub_list_hitsNestedCollection() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+    MockServerUtils.seedData(nested, 3);
+
+    List<TestResponseModel> items =
+        client.sub(SUB_TEMPLATE, "o1", "cancel").list(TestResponseModel.class);
+
+    assertThat(items).hasSize(3);
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getPath().getValue()).isEqualTo(nested);
+  }
+
+  @Test
+  void sub_post_createsUnderNestedCollection() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+
+    TestResponseModel res = client.sub(SUB_TEMPLATE, "o1", "cancel")
+        .post(testDataMap(), TestResponseModel.class);
+
+    assertThat(res.getId()).isNotBlank();
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("POST"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getPath().getValue()).isEqualTo(nested);
+  }
+
+  @Test
+  void sub_chained_producesDeepPath() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+    String id = MockServerUtils.addDataToCache(nested, MockServerUtils.getTestData());
+
+    TestResponseModel res = client
+        .sub("/{orderId}/action", "o1")
+        .sub("/{action}/item", "cancel")
+        .get(id, TestResponseModel.class);
+
+    assertThat(res.getId()).isEqualTo(id);
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getPath().getValue()).isEqualTo(nested + "/" + id);
+  }
+
+  @Test
+  void sub_inheritsFixedHeadersAndScopes() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+    String id = MockServerUtils.addDataToCache(nested, MockServerUtils.getTestData());
+
+    ServerConfig serverConfig = new ServerConfig();
+    serverConfig.setBaseUrl(MockServerUtils.getBaseUrl());
+    serverConfig.setContextPath("");
+    serverConfig.setClientRef("default");
+    serverConfig.setEndpoints(Map.of());
+
+    EndpointConfig endpointConfig = new EndpointConfig();
+    endpointConfig.setPath(path);
+    Map<Scope, String> scopes = new EnumMap<>(Scope.class);
+    scopes.put(Scope.GET, "GET_SCOPE");
+    endpointConfig.setScopes(scopes);
+    endpointConfig.setFixedHeaders(Map.of("X-Fixed", "fixed-value"));
+
+    ClientProperties clientProperties = new ClientProperties();
+    clientProperties.setNumRetries(0);
+    clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+
+    List<String> requestedScopes = new ArrayList<>();
+    SyncTokenService recordingTokenService = new MockSyncTokenService() {
+      @Override
+      public String getToken(String additionalScopes) {
+        requestedScopes.add(additionalScopes);
+        return super.getToken(additionalScopes);
+      }
+    };
+
+    TmfClientImpl<Map<String, Object>, Map<String, Object>, TestResponseModel> parent =
+        new TmfClientImpl<>(endpointConfig, serverConfig,
+            RestClient.builder().requestFactory(new JdkClientHttpRequestFactory()).build(),
+            recordingTokenService, clientProperties, TestResponseModel.class);
+
+    TestResponseModel res =
+        parent.sub(SUB_TEMPLATE, "o1", "cancel").get(id, TestResponseModel.class);
+
+    assertThat(res.getId()).isEqualTo(id);
+    assertThat(requestedScopes).containsExactly("GET_SCOPE");
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("X-Fixed")).isEqualTo("fixed-value");
+  }
+
+  @Test
+  void sub_withPageable_appendsPaginationAfterNestedPath() {
+    String nested = nestedPath();
+    MockServerUtils.setUpAllDynamicCallbacks(nested);
+    MockServerUtils.seedData(nested, 3);
+
+    client.sub(SUB_TEMPLATE, "o1", "cancel")
+        .list(TmfOffsetRequest.of(0, 10), TestResponseModel.class);
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET"));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getPath().getValue()).isEqualTo(nested);
+    assertThat(recorded[0].getFirstQueryStringParameter("offset")).isEqualTo("0");
+    assertThat(recorded[0].getFirstQueryStringParameter("limit")).isEqualTo("10");
+  }
+
+  @Test
+  void sub_arityMismatch_throwsBeforeAnyRequest() {
+    assertThatThrownBy(() -> client.sub(SUB_TEMPLATE, "o1"))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining(SUB_TEMPLATE);
+
+    assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request())).isEmpty();
   }
 }

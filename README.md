@@ -27,6 +27,7 @@ maintenance mode for Spring Boot 3.x users. This library targets **Spring Boot 4
    - [Write operations](#write-operations)
    - [Bulk create — collection-level JSON Patch](#bulk-create--collection-level-json-patch)
    - [Delete](#delete)
+   - [Sub-resource paths](#sub-resource-paths)
 6. [Per-request options — `TmfRequestContext`](#per-request-options--tmfrequestcontext)
 7. [Pagination](#pagination)
    - [Passing `TmfRequestContext` to list operations](#passing-tmfrequestcontext-to-list-operations)
@@ -418,6 +419,43 @@ String confirmation = client.delete("123", String.class);
 Mono<Void> done = client.delete("123");
 Mono<String> confirmation = client.delete("123", String.class);
 ```
+
+### Sub-resource paths
+
+`sub(String template, Object... vars)` derives a client scoped to a nested path under the
+endpoint, e.g. `GET /order/{orderId}/action/{action}/item/{itemId}`. The derived client is the
+generic (`Object`-typed) client — use the `Class<T>` overloads for typing — and every existing
+verb works against the nested path unchanged:
+
+```java
+// GET /productOrder/o1/action/cancel/item/it7
+Item item = orderClient.sub("/{orderId}/action/{action}/item", orderId, action)
+                       .get(itemId, Item.class);
+
+// GET /productOrder/o1/action/cancel/item
+List<Item> items = orderClient.sub("/{orderId}/action/{action}/item", orderId, action)
+                              .list(Item.class);
+
+// POST /productOrder/o1/action/cancel/item
+Item created = orderClient.sub("/{orderId}/action/{action}/item", orderId, action)
+                          .post(body, Item.class);
+```
+
+Rules and guarantees:
+
+- **The template must be a compile-time constant.** Never concatenate runtime data into it —
+  every runtime value goes in `vars`, where it is expanded as a URI template variable and
+  strictly percent-encoded. A value containing `/`, `:` or `{` cannot inject or break the path
+  (`a/b` becomes `a%2Fb`), and encoding is identical to what `get(id)` produces for the same
+  value.
+- Only simple `{name}` placeholders are supported; `{name:regex}` is rejected.
+- Template/argument arity is validated eagerly — too few *and* too many arguments throw
+  `IllegalArgumentException` before any request is issued.
+- The derived client inherits the parent endpoint's OAuth scopes, fixed headers, and transport
+  (`RestClient`/`WebClient`, retries, token service). For a different scope, configure a
+  separate endpoint in YAML instead.
+- `sub(...)` on an already-derived client appends to its path, so nesting depth is unbounded.
+  Each call allocates a thin new wrapper; hoist the derived client out of hot loops.
 
 ---
 
