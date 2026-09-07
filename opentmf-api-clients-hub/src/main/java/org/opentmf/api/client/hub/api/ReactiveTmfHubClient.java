@@ -12,7 +12,7 @@ import reactor.core.publisher.Mono;
  * (DELETE). List / GET / PATCH operations are intentionally omitted.
  *
  * <p>The {@link #unregisterListener(HubRegistration)} overload sends the DELETE request to the
- * {@link HubRegistration#getHubUri() hubUri} stored in the registration, enabling unregistration
+ * {@code hubUri} stored in the registration, enabling unregistration
  * from a <em>previous</em> server when the hub endpoint URL has changed between deployments.
  */
 public interface ReactiveTmfHubClient {
@@ -40,8 +40,8 @@ public interface ReactiveTmfHubClient {
   /**
    * Unregisters a listener from the server that was used during the original registration.
    *
-   * <p>The DELETE request targets {@link HubRegistration#getHubUri()} + {@code /} +
-   * {@link HubRegistration#getId()}, allowing unregistration from a previous server if the
+   * <p>The DELETE request targets {@code HubRegistration.getHubUri()} + {@code /} +
+   * {@code HubRegistration.getId()}, allowing unregistration from a previous server if the
    * hub configuration has since changed.
    */
   Mono<Void> unregisterListener(HubRegistration registration);
