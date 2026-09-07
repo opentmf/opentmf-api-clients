@@ -392,7 +392,7 @@ drops the `Flux<R>` mention.
 
 [`plan-fix-no-auth-clients.md`](plan-fix-no-auth-clients.md) ships in the same
 3.0.0 release. It does not need a major on its own, although it does change
-`HeaderUtil`'s public surface (`headersConsumer` gains an `authRequired`
+`HeaderUtil`'s public surface (`headersConsumer` gains an `AuthType`
 parameter; the `prepare*` methods stop rejecting header sets without
 `Authorization`) and tightens validation for BEARER/BASIC clients with a blank
 token. The reason to bundle it is sequencing as much as semantics:
@@ -454,6 +454,20 @@ client.listPaged(page, ProductOffering.class)
 Metadata accessors (`getTotalElements`, `hasNext`, `isLast`, …) are unchanged.
 Sync `listPaged*` is unchanged. No configuration changes.
 
+Two further notes for the same MIGRATION section:
+
+- **Emission timing (behavioural, invisible in the types).** Reactive
+  single-page `list(...)` and `listAll(...)` keep their `Flux<R>` signatures
+  but now buffer each page before emitting its items, instead of streaming
+  items as they decode. Per-page memory is bounded by the page size;
+  cross-page laziness is unchanged. Callers relying on intra-page streaming
+  latency (none are known) should read this as the D4 rule applied uniformly.
+- **`entity()` is a new abstract method on published interfaces.** Any class
+  that implements `TmfClient` or `ReactiveTmfClient` directly (rather than
+  extending the shipped impls) stops compiling until it implements
+  `entity()`. Acceptable in a major and worth one line here, so an implementor
+  reads it as intended breakage rather than an accident.
+
 ---
 
 ## Tests
@@ -481,9 +495,14 @@ Sync `listPaged*` is unchanged. No configuration changes.
 
 **Coverage.** Both modules enforce per-`BUNDLE` JaCoCo at 80% LINE /
 INSTRUCTION / BRANCH with `CLASS MISSEDCOUNT = 0` (root `pom.xml:258-310`). The
-new adapters are almost entirely one-line delegations, so the ITs must exercise
-every overload or the ladder will drag the ratio down. Budget for that: it is
-~64 methods per module.
+new adapters are almost entirely one-line delegations — ~64 methods per module —
+and covering every overload with a full MockServer IT would roughly double the
+IT suites for no wire-level insight. Split the burden by what each layer can
+actually get wrong: **one IT per verb family** (status, seeded header, body
+equality — the wire behaviour), plus **unit tests for the overload ladder**
+against a mocked core, asserting only that each overload forwards its arguments
+and default-fills the rest. Delegation mistakes are argument-ordering mistakes;
+a unit test catches those as well as an IT and costs milliseconds.
 
 ---
 
@@ -532,6 +551,40 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
    profile activated and the mandatory ignore regex, full build on JDK 17, then
    cut 3.0.0.
 
+### Guardrails for the implementer
+
+The two plans above contain every decision; none are open for re-deciding
+during implementation. Concretely:
+
+- **Scope is closed.** Do not add: entity variants for `listAll*`/`listPaged*`,
+  a hub entity view, back-compat overloads of `headersConsumer`, changes to
+  `opentmf-http-clients`, dependency upgrades, or reformatting of untouched
+  code. If something appears to require any of these, stop and raise it —
+  do not improvise.
+- **The build gate is the arbiter, and it is not adjustable.** Run
+  `mvn verify` (JDK 17) after every step; every step's commit must be green.
+  If JaCoCo fails, add the missing ladder unit tests (see *Coverage*) — never
+  touch the JaCoCo configuration, thresholds, or exclusions in any pom.
+- **Red before green, twice.** Two tests are specified to fail against the
+  unchanged code before their fix lands: the `HeaderUtilTest` BEARER+blank
+  assertion (no-auth plan, *Tests*) and the read-content-twice `listPaged`
+  IT (D4). Run each against the pre-fix code and observe the failure; a test
+  that passes early is testing the wrong thing.
+- **Step 2's two commits are strictly ordered**: the IT-fixture commit
+  (`BearerAuthConfig` + one `Authorization` assertion per module) must be
+  green **on its own against the unchanged main code** before the
+  `HeaderUtil` commit starts.
+- **Exact signature for the changed utility** (no-auth plan, second-pass
+  corrections): `headersConsumer(String tokenType, String token,
+  Map<String, String> fixedHeaders, TmfRequestContext ctx,
+  org.opentmf.client.common.model.AuthType authType)` — the check inside is
+  `authType != AuthType.NONE && !StringUtils.hasText(token)`.
+- **One work-order step per commit** (step 2 takes two), each carrying its own
+  CHANGELOG lines. No retrospective doc commit, no squashing across steps.
+- **When a claim in the plan contradicts the code you see, the code wins** —
+  but record the discrepancy in the PR description instead of silently
+  adapting, so the review can re-check the reasoning that depended on it.
+
 ### Why this order
 
 - **Version first.** The CHANGELOG heading is keyed off the pom version. With
@@ -576,3 +629,18 @@ Both open questions are settled (2026-09-07):
    check lives, IT fixtures) are recorded in that plan.
 
 No open questions remain. This plan is ready to implement.
+
+## Review corrections (2026-09-07, second pass)
+
+Independent senior review, verified against the code (line references, the four
+factories, both impls' internals, the JaCoCo gate, the pinned
+`opentmf-http-clients` 2.1.8 contract — all check out). Three fixations folded
+into the sections above:
+
+1. The bundled fix's `HeaderUtil` parameter is `AuthType`, not `boolean` — see
+   that plan's second-pass corrections; the *Bundled* section here was aligned.
+2. The MIGRATION section gains the two notes above: the emission-timing
+   behaviour change (D4's side effect on `list`/`listAll`), and `entity()`
+   being intended source breakage for direct interface implementors.
+3. The coverage strategy is split — ITs per verb family, unit tests for the
+   overload ladder — instead of ITs for every overload.
