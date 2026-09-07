@@ -1,8 +1,11 @@
 # Implementation plan: expose response headers (and align `listPaged`)
 
-> **Status:** approved in design, NOT yet implemented. Written against
-> `2.1.1-SNAPSHOT` (develop, 2026-09-07). This plan carries a deliberate
-> **backward-incompatible** change and therefore targets a **3.0.0** release.
+> **Status:** IMPLEMENTED and merged into `develop` in PR #2 (2026-09-08),
+> shipping in **3.0.0**. Written against `2.1.1-SNAPSHOT` (develop,
+> 2026-09-07). This plan carries a deliberate **backward-incompatible** change
+> and therefore targets a **3.0.0** release. Kept as the design record for the
+> change; the shipped behaviour is documented in `README.md`, `MIGRATION.md`
+> and the 3.0.0 `CHANGELOG.md` section.
 >
 > **Decided:** the entity view is reached by `entity()`; the no-auth fix in
 > [`plan-fix-no-auth-clients.md`](plan-fix-no-auth-clients.md) ships in the same

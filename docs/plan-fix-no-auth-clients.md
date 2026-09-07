@@ -1,8 +1,10 @@
 # Plan: support no-auth (`AuthType.NONE`) clients
 
-> **Status:** SCHEDULED for **3.0.0**, not yet implemented. Re-confirmed still
-> present at `2.1.1-SNAPSHOT` (develop) on 2026-09-07 — see *Empirical
-> verification*. Sequenced as work-order step 2 of
+> **Status:** IMPLEMENTED and merged into `develop` in PR #2 (2026-09-08),
+> shipping in **3.0.0**. The defect described below was last confirmed present
+> at `2.1.1-SNAPSHOT` (develop) on 2026-09-07 — see *Empirical verification*;
+> everything stated in the present tense about the broken behaviour describes
+> 2.1.0 and earlier. Sequenced as work-order step 2 of
 > [`plan-response-headers.md`](plan-response-headers.md), because both changes
 > edit `HeaderUtil` and the four `headers(...)` call sites; this fix lands first
 > so each commit's diff is about one thing.
