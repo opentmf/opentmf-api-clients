@@ -125,7 +125,8 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         tokenService.getTokenType(),
         token,
         mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()),
-        ctx);
+        ctx,
+        clientProperties.getAuthType());
   }
 
   // ==========================================================================

@@ -20,6 +20,13 @@ import org.springframework.data.domain.Pageable;
  *   <li><em>auto-token</em> – the implementation retrieves a token from {@code SyncTokenService}</li>
  *   <li><em>withToken</em> – the caller supplies an already-obtained token</li>
  * </ul>
+ *
+ * <p><b>{@code …WithToken} on a no-auth client:</b> when the referenced http-client configures
+ * neither {@code bearer-auth} nor {@code basic-auth} ({@code AuthType.NONE}), the client has no
+ * token scheme of its own, so a token passed to a {@code …WithToken} overload is sent
+ * <b>verbatim</b> as the whole {@code Authorization} value — pass {@code "Bearer eyJ…"} if a
+ * scheme is needed. With a blank token, a NONE client sends no {@code Authorization} header at
+ * all, while a BEARER/BASIC client fails fast with an {@link IllegalArgumentException}.
  */
 public interface TmfClient<C, U, R> {
 

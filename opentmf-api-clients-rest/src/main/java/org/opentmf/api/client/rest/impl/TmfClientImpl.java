@@ -112,7 +112,8 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   protected Consumer<HttpHeaders> headers(String token, TmfRequestContext ctx) {
     return headersConsumer(tokenService.getTokenType(), token,
-        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()), ctx);
+        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()), ctx,
+        clientProperties.getAuthType());
   }
 
   // ==========================================================================

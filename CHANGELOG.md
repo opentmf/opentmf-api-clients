@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.0] - unreleased
 
+### Fixed
+- No-auth (`AuthType.NONE`) clients work: an `opentmf.api-clients` server whose
+  `client-ref` points at an http-client with neither `bearer-auth` nor
+  `basic-auth` block previously threw
+  `IllegalArgumentException: Authorization token must not be empty.` on every
+  call, before any request reached the network. Such a client now sends no
+  `Authorization` header at all. A token passed explicitly to a `…WithToken`
+  overload on a NONE client is sent verbatim as the whole credential (pass
+  `"Bearer eyJ…"` if a scheme is needed).
+
+### Changed
+- **A BEARER or BASIC client whose token service returns a blank token now
+  fails locally** with `IllegalArgumentException: Authorization token must not
+  be empty.` instead of sending `Authorization: Bearer ` and collecting a
+  remote 401. This is the behaviour the old guard was always documented to
+  provide; it never actually fired for authenticated clients.
+- `HeaderUtil.headersConsumer(...)` gains a fifth parameter — the client's
+  `AuthType` — and owns the whole authorization decision. The `prepare*`
+  methods no longer reject header sets without `Authorization` (a NONE
+  client's headers legitimately carry none); `validateAuthorization` is
+  removed. No delegating four-argument overload is kept, so every call site
+  states its auth type explicitly.
+
 ## [2.1.0] - 2026-08-20
 
 ### Added

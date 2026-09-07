@@ -1018,4 +1018,80 @@ class ReactiveTmfClientIT {
 
     assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request())).isEmpty();
   }
+
+  // --- NONE-auth client (no bearer/basic block): no Authorization header, ever ---
+
+  private ReactiveTmfClientImpl<Map<String, Object>, Map<String, Object>, TestResponseModel>
+      noneAuthClient() {
+    ServerConfig sc = new ServerConfig();
+    sc.setBaseUrl(MockServerUtils.getBaseUrl());
+    sc.setContextPath("");
+    sc.setClientRef("default");
+    sc.setEndpoints(Map.of());
+
+    EndpointConfig ec = new EndpointConfig();
+    ec.setPath(path);
+
+    ClientProperties noneProps = new ClientProperties();
+    noneProps.setNumRetries(0);
+    noneProps.setRetryWaitDuration(Duration.ofMillis(100));
+    // no bearer-auth / basic-auth block: getAuthType() == NONE
+
+    TokenService blankTokenService = new TokenService() {
+      @Override public String getTokenType() { return ""; }
+      @Override public Mono<String> getToken() { return Mono.just(""); }
+      @Override public Mono<String> getToken(String additionalScopes) { return Mono.just(""); }
+    };
+
+    return new ReactiveTmfClientImpl<>(ec, sc, WebClient.create(),
+        blankTokenService, noneProps, TestResponseModel.class);
+  }
+
+  @Test
+  void noneAuthClient_allVerbs_sendNoAuthorizationHeader() {
+    MockServerUtils.setUpAllDynamicCallbacks(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
+    var noneClient = noneAuthClient();
+
+    TestResponseModel created = noneClient.post(testDataMap()).block();
+    assertThat(created).isNotNull();
+    String id = created.getId();
+
+    assertThat(noneClient.get(id).block().getId()).isEqualTo(id);
+    assertThat(noneClient.list().collectList().block()).isNotEmpty();
+    assertThat(noneClient.put(id, Map.of("name", "put-name")).block().getId()).isEqualTo(id);
+    assertThat(noneClient.patch(id, Map.of("description", "merge-patched")).block().getId())
+        .isEqualTo(id);
+    assertThat(noneClient
+        .patch(id, JsonPatch.builder().replace("/description", "json-patched").build())
+        .block().getId()).isEqualTo(id);
+    assertThat(noneClient.patchCollection(
+        JsonPatch.builder().add("/", Map.of("name", "N1")).build()).block()).hasSize(1);
+    noneClient.delete(id).block();
+
+    HttpRequest[] all = MockServerUtils.getMockServer().retrieveRecordedRequests(request());
+    assertThat(all).isNotEmpty();
+    for (HttpRequest r : all) {
+      assertThat(r.containsHeader("Authorization"))
+          .as("request %s %s must carry no Authorization header", r.getMethod(), r.getPath())
+          .isFalse();
+    }
+  }
+
+  @Test
+  void noneAuthClient_withExplicitToken_sendsItVerbatim() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    StepVerifier.create(noneAuthClient().getWithToken("opaque-credential", id))
+        .assertNext(res -> assertThat(res.getId()).isEqualTo(id))
+        .verifyComplete();
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("opaque-credential");
+  }
 }
