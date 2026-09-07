@@ -34,8 +34,9 @@ maintenance mode for Spring Boot 3.x users. This library targets **Spring Boot 4
 8. [Client-side filtering — JsonPath guide](#client-side-filtering--jsonpath-guide)
 9. [Hub Client](#hub-client)
 10. [Error Handling](#error-handling)
-11. [Migration](#migration)
-12. [Version History](#version-history)
+11. [Response headers](#response-headers)
+12. [Migration](#migration)
+13. [Version History](#version-history)
 
 ---
 
@@ -103,6 +104,11 @@ The full configuration schema and bean wiring options are covered next.
 ---
 
 ## Configuration
+
+> A `client-ref` may point at an http-client that configures **neither** `bearer-auth` nor
+> `basic-auth`: such a no-auth client sends no `Authorization` header at all (since 3.0.0).
+> A token passed to a `…WithToken` overload on a no-auth client is sent verbatim as the whole
+> credential.
 
 ```yaml
 opentmf:
@@ -813,6 +819,52 @@ hubClient.registerListener(input)
 All errors are surfaced as `OpenTmfClientResponseException` (or the
 `OpenTmfClientNotFoundException` subclass for 404s) from `opentmf-http-clients`. No per-client
 exception classes are needed.
+
+---
+
+## Response headers
+
+Every method on `TmfClient` / `ReactiveTmfClient` returns a deserialized body. When you need
+what travels *around* the body — `Location` after a create, an `ETag` for a conditional
+follow-up, a `Retry-After` on a 202, any custom `X-*` header, or the status code — use the
+**entity view**:
+
+```java
+// sync
+ResponseEntity<ProductOffering> re = client.entity().get(id);
+String location = client.entity().post(input).getHeaders().getFirst("Location");
+
+// reactive
+Mono<ResponseEntity<ProductOffering>> re = reactiveClient.entity().get(id);
+```
+
+`entity()` returns a cached `TmfEntityClient` / `ReactiveTmfEntityClient` carrying the same
+eight verb families and the same 8-overload ladder as the body view — the verbs keep their
+names, so `client.entity().patchCollectionWithToken(...)` reads like its body twin. Reactive
+list bodies are fully materialized `List<T>`: every entity handed to you is re-readable and
+its connection released, even if you never touch the body.
+
+Three members are deliberately absent:
+
+- **`listAll*`** — it walks N pages, so there are N header sets; a single `ResponseEntity`
+  would have to pick one ("the last page's") — a value that looks authoritative and is not.
+- **`listPaged*`** — a `TmfPage` already *is* the header-derived view of a list response;
+  wrapping it in an entity would expose the same headers twice in one value. To read list
+  headers directly, use `entity().list(...)` and `ResponseEntity#getHeaders()`.
+- **`sub`** — `client.sub(...).entity()` composes.
+
+**Errors still throw.** A non-2xx response raises `OpenTmfClientResponseException` exactly as
+on the body view — it does not arrive as a `ResponseEntity` with an error status. Headers of
+*failed* responses were always reachable and still are:
+
+```java
+try {
+  var po = client.get(id);
+} catch (OpenTmfClientResponseException ex) {
+  HttpHeaders headers = ex.getHeaders();     // nullable
+  Duration retryAfter = ex.getRetryAfter();  // nullable
+}
+```
 
 ---
 
