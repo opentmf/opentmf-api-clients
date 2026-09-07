@@ -71,9 +71,19 @@ the fix (see **Tests** below).
 ## Root cause
 
 Two independent defects in
-`opentmf-api-clients-common/.../util/HeaderUtil.java`, which is shared by BOTH
-transports — `TmfClientImpl.java:113-115` (REST) and
-`ReactiveTmfClientImpl.java:124-125` (reactive) call into it identically.
+`opentmf-api-clients-common/.../util/HeaderUtil.java`, which is shared by
+**four** header factories across three modules — all of them call
+`headersConsumer` identically:
+
+| module | call site |
+| --- | --- |
+| `-rest` | `TmfClientImpl.java:113` |
+| `-reactive` | `ReactiveTmfClientImpl.java:123` |
+| `-hub` (sync) | `TmfHubClientImpl.java:126` |
+| `-hub` (reactive) | `ReactiveTmfHubClientImpl.java:135` |
+
+The hub clients are affected exactly as the generic ones are: a NONE-auth
+`registerListener` / `unregisterListener` throws before reaching the network.
 
 **1. The Authorization header is set unconditionally.** In `headersConsumer`:
 
@@ -119,24 +129,48 @@ separate those two states rather than conflate them further.
 
 ## Proposed fix
 
-1. **Let the token service state that no auth applies.** Add a default method to
-   `SyncTokenService` / `TokenService`, e.g.
-   `default boolean isAuthenticationRequired() { return true; }`, overridden to
-   `false` in `NoOpSyncTokenService` and `NoOpTokenService`. A default keeps
-   every existing implementation source-compatible.
-   (Alternative shape: return `Optional<String>`/`null` for "no token" from the
-   no-op services. It carries the same information but changes the signature
-   every implementation depends on, so the default method is preferred.)
+1. **Read the no-auth signal from the configuration, not the token service.**
+   All four header factories above already hold a `ClientProperties`
+   (`TmfClientImpl.java:70`, `ReactiveTmfClientImpl.java:67`,
+   `TmfHubClientImpl.java:42`, `ReactiveTmfHubClientImpl.java:46`), and
+   `ClientProperties.getAuthType()` returns `AuthType.NONE` exactly when neither
+   `basic-auth` nor `bearer-auth` is configured. So each factory passes an
+   explicit `authRequired` flag:
+
+   ```java
+   protected Consumer<HttpHeaders> headers(String token, TmfRequestContext ctx) {
+     return headersConsumer(tokenService.getTokenType(), token,
+         mergeFixedHeaders(...), ctx,
+         clientProperties.getAuthType() != AuthType.NONE);
+   }
+   ```
+
 2. **`headersConsumer`: skip the header when no auth applies** — do not set
-   `Authorization` at all, rather than setting it blank. The no-auth signal has
-   to be threaded in from the caller (`TmfClientImpl.headers(...)` /
-   `ReactiveTmfClientImpl`), which already holds the `tokenService`.
+   `Authorization` at all, rather than setting it blank.
 3. **`validateAuthorization`: validate only when auth applies.** Keep today's
    throw for the BEARER/BASIC paths untouched — that behaviour is correct and
    deliberately load-bearing.
 
-Scope is small and contained: `HeaderUtil` plus the two call sites, and one
-overridden method in each no-op token service. No public API is broken.
+Scope is contained to **this repository**: `HeaderUtil` plus the four call
+sites. No public API is broken.
+
+### Why not `isAuthenticationRequired()` on the token service
+
+An earlier draft of this plan proposed a default method
+`boolean isAuthenticationRequired()` on `SyncTokenService` / `TokenService`,
+overridden to `false` in `NoOpSyncTokenService` and `NoOpTokenService`. It is a
+clean shape, but those four types all live in **`opentmf-http-clients`**. Taking
+that route means: change the upstream repo → cut an upstream release → bump the
+dependency here → only then fix. That puts a whole release cycle of another
+project on the critical path of this one, for a signal we can already read
+locally.
+
+What the `ClientProperties` route gives up: a custom `TokenService`
+implementation cannot declare *itself* no-auth. That is the correct trade —
+whether an endpoint requires authorization is a property of the client's
+configuration, not of the token service instance, and no such implementation
+exists. If one ever does, the upstream default method can be added later as a
+refinement without changing `HeaderUtil`'s signature again.
 
 ## Tests
 
@@ -145,7 +179,9 @@ overridden method in each no-op token service. No public API is broken.
   each of GET/DELETE, POST/PUT and the three patch content types.
 - Keep an explicit negative test that a BEARER-shaped client with an empty token
   still throws `ERR_EMPTY_AUTH_TOKEN` — the regression this fix must not cause.
-- Cover both transports; `HeaderUtil` is shared, but the two call sites are not.
+- Cover all **four** call sites — `-rest`, `-reactive` and both hub clients.
+  `HeaderUtil` is shared, but the four factories are not, and the hub module has
+  its own module-level coverage gate.
 
 ## Impact on consumers
 

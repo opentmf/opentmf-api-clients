@@ -84,9 +84,10 @@ than reimplemented.
 - **No entity variants for `listPaged*`.** `TmfPage` already *is* the
   header-derived view of a list response; a `ResponseEntity<TmfPage<...>>` would
   expose the same headers twice in one value.
-- **No hub-client change.** `TmfHubClient` / `ReactiveTmfHubClient` are a
+- **No hub-client *entity view*.** `TmfHubClient` / `ReactiveTmfHubClient` are a
   deliberately narrow 5-method surface (`registerListener`,
-  `unregisterListener` ×3). `registerListener` already returns a synthesized
+  `unregisterListener` ×3). (The bundled no-auth fix *does* touch both hub
+  impls — they share the broken header path — but adds no new surface there.) `registerListener` already returns a synthesized
   `HubRegistration`, and no consumer has asked for hub response headers. Adding
   an entity view there would be surface for its own sake.
 - **No `RestTemplate` implementation.** Unchanged project position: this library
@@ -381,9 +382,12 @@ change.
 3.0.0 release. It is a **non-breaking fix** and does not need a major — the
 reason to bundle it is sequencing, not semantics:
 
-- Both changes edit `HeaderUtil` and both transports' `headers(...)` call sites.
-  Landing them in separate releases means touching the same six call sites twice
-  and reviewing the second change against a moving base.
+- Both changes edit `HeaderUtil` and the `headers(...)` factories that feed it.
+  There are **four** of those, not two — `TmfClientImpl.java:113`,
+  `ReactiveTmfClientImpl.java:123`, `TmfHubClientImpl.java:126` and
+  `ReactiveTmfHubClientImpl.java:135`. Landing the two changes in separate
+  releases means touching the same code twice and reviewing the second change
+  against a moving base.
 - The defect is confirmed still present at `2.1.1-SNAPSHOT` (re-verified
   2026-09-07 — see that plan's *Empirical verification*). A NONE-auth client
   throws on **every** call, so there is nothing to lose by shipping the fix
@@ -397,6 +401,13 @@ below. It rewrites `validateAuthorization` and `headersConsumer`; the entity
 refactor rewrites the code that *calls* them. Fix-then-refactor keeps each
 commit's diff about one thing. That plan's own tests must be green before the
 entity work starts.
+
+**No upstream release is on the critical path.** The no-auth fix reads
+`ClientProperties.getAuthType() != AuthType.NONE` — a value all four factories
+already hold — instead of adding a method to `SyncTokenService` / `TokenService`
+in `opentmf-http-clients`. Both changes are therefore contained in this
+repository, and 3.0.0 does not wait on an `opentmf-http-clients` release. See
+that plan's *Why not `isAuthenticationRequired()` on the token service*.
 
 The two changes are otherwise independent: no-auth touches request headers, the
 entity view touches response handling.
@@ -472,9 +483,10 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
 
 ## Work order
 
-0. Land the no-auth fix per its own plan (`HeaderUtil` + both `headers(...)`
-   call sites + the two no-op token services), with its regression tests. Green
-   before anything below starts.
+0. Land the no-auth fix per its own plan (`HeaderUtil` + all four `headers(...)`
+   factories, including both hub clients), with its regression tests. No
+   `opentmf-http-clients` change is required. Green before anything below
+   starts.
 1. Refactor sync verbs to entity-returning cores + body unwrappers. ITs green, no
    public API change yet.
 2. Same for reactive, including the `justOrEmpty` handling. ITs green.
