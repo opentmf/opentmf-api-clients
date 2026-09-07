@@ -3,6 +3,7 @@ package org.opentmf.api.client.reactive.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -176,6 +177,17 @@ class ReactiveTmfClientIT {
           assertThat(res.getId()).isEqualTo(id);
         })
         .verifyComplete();
+  }
+
+  @Test
+  void get_emptyBody_completesEmptyInsteadOfErroring() {
+    // The justOrEmpty trap: with a null entity body, .map(ResponseEntity::getBody) would throw
+    // "The mapper returned a null value"; the unwrapper must complete empty like bodyToMono did.
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path + "/empty-204"))
+        .respond(response().withStatusCode(204));
+
+    StepVerifier.create(client.get("empty-204")).verifyComplete();
   }
 
   @Test
