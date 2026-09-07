@@ -7,6 +7,11 @@
 > **Decided:** the entity view is reached by `entity()`; the no-auth fix in
 > [`plan-fix-no-auth-clients.md`](plan-fix-no-auth-clients.md) ships in the same
 > 3.0.0 release (see *Bundled: no-auth support*).
+>
+> Reviewed against the code on 2026-09-07: every line reference, the four
+> `headers(...)` call sites and the JaCoCo gate check out. Three small
+> corrections were folded in (D4 scope, README touch points, the `HeaderUtil`
+> surface change carried by the bundled fix).
 
 ## Background
 
@@ -186,11 +191,15 @@ it per request it is not. Since 3.0.0 is being cut anyway, `listPaged*` moves to
 is fully materialized* — holds across the whole library, and the new entity
 methods are not a special case that quietly contradicts the old ones.
 
-**Behaviour change to state plainly:** after this, `listAll` buffers each page
-before emitting its items, instead of streaming items within a page. Per-page
-memory is bounded by the page size, and `retrieveAllPagesWithClientFilter`
-already collects everything into a list regardless. Cross-page laziness is
-unchanged — pages are still fetched on demand.
+**Behaviour change to state plainly:** after this, both the single-page
+`list(pageable)` (`ReactiveTmfClientImpl.java:206-209`, which is
+`retrieveSinglePageWithResponse(...).flatMapMany(TmfPage::getContent)` today)
+and `listAll` buffer each page before emitting its items, instead of streaming
+items within a page. Their signatures stay `Flux<R>`; only the emission timing
+changes. Per-page memory is bounded by the page size, and
+`retrieveAllPagesWithClientFilter` already collects everything into a list
+regardless. Cross-page laziness is unchanged — pages are still fetched on
+demand.
 
 ### D5 — Entity methods do not change error handling or retry
 
@@ -361,8 +370,9 @@ calls as today, and now identical to the sync implementation.
 +     recursiveRetrieve(token, page.getNextPageable(), type));
 ```
 
-`OffsetPage` and `TmfPage` are generic in the content type and need **no**
-change.
+`OffsetPage` and `TmfPage` are generic in the content type and need **no** code
+change. The `TmfPage` javadoc (`@param <T> … typically List<R> or Flux<R>`)
+drops the `Flux<R>` mention.
 
 ---
 
@@ -381,8 +391,11 @@ change.
 ### Bundled: no-auth (`AuthType.NONE`) support
 
 [`plan-fix-no-auth-clients.md`](plan-fix-no-auth-clients.md) ships in the same
-3.0.0 release. It is a **non-breaking fix** and does not need a major — the
-reason to bundle it is sequencing, not semantics:
+3.0.0 release. It does not need a major on its own, although it does change
+`HeaderUtil`'s public surface (`headersConsumer` gains an `authRequired`
+parameter; the `prepare*` methods stop rejecting header sets without
+`Authorization`) and tightens validation for BEARER/BASIC clients with a blank
+token. The reason to bundle it is sequencing as much as semantics:
 
 - Both changes edit `HeaderUtil` and the `headers(...)` factories that feed it.
   There are **four** of those, not two — `TmfClientImpl.java:113`,
@@ -399,10 +412,13 @@ reason to bundle it is sequencing, not semantics:
   where people are already looking.
 
 **Ordering constraint.** Do the no-auth fix **before** the entity refactor
-(work-order step 3). It rewrites `validateAuthorization` and `headersConsumer`; the entity
-refactor rewrites the code that *calls* them. Fix-then-refactor keeps each
-commit's diff about one thing. That plan's own tests must be green before the
-entity work starts.
+(work-order step 3). It rewrites `headersConsumer`, removes
+`validateAuthorization`, and touches every IT fixture (they all need a
+`BearerAuthConfig` to stay authenticated clients — see that plan's *Tests*);
+the entity refactor rewrites the code that *calls* `prepare*` and leans on those
+same ITs as its regression guard. Fix-then-refactor keeps each commit's diff
+about one thing and means the guard is settled before it is relied on. That
+plan's own tests must be green before the entity work starts.
 
 **No upstream release is on the critical path.** The no-auth fix reads
 `ClientProperties.getAuthType() != AuthType.NONE` — a value all four factories
@@ -473,10 +489,17 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
 
 ## Documentation
 
-- **README** — new "Response headers" section after "Error Handling": the
-  `entity()` view, the `listAll` omission and why, and the already-working
-  error path via `OpenTmfClientResponseException.getHeaders()`. Update the
-  reactive pagination snippet to `Mono<TmfPage<List<ProductOffering>>>`.
+- **README** — new "Response headers" section after "Error Handling"
+  (`README.md:811`): the `entity()` view, the `listAll` omission and why, and
+  the already-working error path via
+  `OpenTmfClientResponseException.getHeaders()`. The reactive `listPaged`
+  signature appears in **three** places, all of which change to
+  `Mono<TmfPage<List<R>>>`: the "Operation overview" table (`README.md:297`),
+  the return-type table under "Read operations" (`README.md:361`), and the
+  pagination snippet (`README.md:521-523`, whose `paged.map(...)` lines stay
+  valid). Also add a one-line note under "Configuration" that a `client-ref`
+  pointing at an http-client with no auth block now works and sends no
+  `Authorization` header.
 - **Interface javadoc** — on both entity interfaces, state that errors still
   throw (D5) and that `listAll` has no entity form and why (D2).
 - **MIGRATION.md** — the section above.
@@ -487,9 +510,13 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
 
 1. **Version bump to `3.0.0-SNAPSHOT`** across every module, plus the empty
    `## [3.0.0]` CHANGELOG heading.
-2. **No-auth fix** per its own plan (`HeaderUtil` + all four `headers(...)`
-   factories, including both hub clients), with its regression tests. No
-   `opentmf-http-clients` change is required.
+2. **No-auth fix** per its own plan, in two commits: first the IT-fixture
+   change (`BearerAuthConfig` on every fixture plus one `Authorization`
+   assertion per module — green on its own against the unchanged code), then
+   `HeaderUtil` + all four `headers(...)` factories including both hub clients,
+   with the `HeaderUtilTest` matrix and the NONE-client ITs. CHANGELOG
+   `### Fixed` (NONE clients) and `### Changed` (blank-token rejection,
+   `HeaderUtil` signatures). No `opentmf-http-clients` change is required.
 3. **Sync entity-core refactor** — every verb becomes an entity-returning core
    with the body method unwrapping it. No public API change; the untouched IT
    suite is the guard.
@@ -514,9 +541,11 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
   retrospective doc commit at the end that cannot be reviewed against the diffs.
   The cost — it forecloses shipping the no-auth fix as a `2.1.1` hotfix — is
   already an accepted decision (see *Bundled: no-auth support*).
-- **Fix before refactor.** Step 2 rewrites `validateAuthorization` and
-  `headersConsumer`; steps 3-4 rewrite the code that *calls* them. This way each
-  commit's diff is about one thing.
+- **Fix before refactor.** Step 2 rewrites `headersConsumer`, removes
+  `validateAuthorization` and re-bases every IT fixture; steps 3-4 rewrite the
+  code that *calls* `prepare*` and use those fixtures as their guard. This way
+  each commit's diff is about one thing, and the guard is fixed before it is
+  trusted.
 - **Sync before reactive.** Sync has no null-body trap. Establishing the core
   shape there makes the reactive commit a mirror plus one known hazard, rather
   than two novel things at once.
@@ -543,6 +572,7 @@ Both open questions are settled (2026-09-07):
    `ResponseEntity` vocabulary. `withResponse()`, `asEntity()` and `response()`
    were considered and dropped.
 2. **The no-auth fix ships in 3.0.0**, sequenced first — see *Bundled: no-auth
-   support*.
+   support*. Its own three review corrections (guard semantics, where the
+   check lives, IT fixtures) are recorded in that plan.
 
 No open questions remain. This plan is ready to implement.
