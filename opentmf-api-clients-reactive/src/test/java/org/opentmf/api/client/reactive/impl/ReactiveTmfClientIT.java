@@ -1145,4 +1145,143 @@ class ReactiveTmfClientIT {
     assertThat(second).isEqualTo(first).isNotEmpty();
     assertThat(page.getTotalElements()).isGreaterThanOrEqualTo(5);
   }
+
+  // --- ENTITY VIEW ---
+
+  @Test
+  void entity_isReachableAndCached() {
+    assertThat(client.entity()).isSameAs(client.entity());
+  }
+
+  @Test
+  void entity_get_statusHeadersAndBodyMatchBodyView() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().get(id).block();
+    assertThat(re).isNotNull();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isEqualTo(client.get(id).block().getId());
+  }
+
+  @Test
+  void entity_get_exposesCustomResponseHeader() {
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path + "/probe-1"))
+        .respond(response()
+            .withStatusCode(200)
+            .withHeader("Content-Type", "application/json")
+            .withHeader("X-Entity-Probe", "probe-value")
+            .withBody("{\"id\":\"probe-1\"}"));
+
+    var re = client.entity().get("probe-1").block();
+    assertThat(re.getHeaders().getFirst("X-Entity-Probe")).isEqualTo("probe-value");
+    assertThat(re.getBody().getId()).isEqualTo("probe-1");
+  }
+
+  @Test
+  void entity_list_readsXTotalCountOffTheEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 4);
+
+    var re = client.entity().list().block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).isNotEmpty();
+    assertThat(Long.parseLong(re.getHeaders().getFirst("X-Total-Count")))
+        .isGreaterThanOrEqualTo(4);
+  }
+
+  @Test
+  void entity_list_bodyIsReadableTwice() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 3);
+
+    var re = client.entity().list().block();
+    assertThat(re.getBody()).isEqualTo(re.getBody()).isNotEmpty();
+  }
+
+  @Test
+  void entity_post_returnsCreatedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    Map<String, Object> data = testDataMap();
+
+    var re = client.entity().post(data).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isNotBlank();
+    assertThat(re.getBody().getName()).isEqualTo(data.get("name"));
+  }
+
+  @Test
+  void entity_put_returnsUpdatedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().put(id, Map.of("name", "entity-put")).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isEqualTo(id);
+  }
+
+  @Test
+  void entity_mergePatch_returnsPatchedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicMergePatchCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().patch(id, Map.of("description", "entity-merge")).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getDescription()).isEqualTo("entity-merge");
+  }
+
+  @Test
+  void entity_jsonPatch_returnsPatchedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicJsonPatchCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().patch(id,
+        JsonPatch.builder().replace("/description", "entity-json").build()).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getDescription()).isEqualTo("entity-json");
+  }
+
+  @Test
+  void entity_patchCollection_returnsListEntity() {
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
+
+    var re = client.entity().patchCollection(
+        JsonPatch.builder().add("/", Map.of("name", "E1")).build()).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).hasSize(1);
+    assertThat(re.getBody().get(0).getName()).isEqualTo("E1");
+  }
+
+  @Test
+  void entity_delete_returnsVoidEntityWithStatus() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicDeleteCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().delete(id).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).isNull();
+  }
+
+  @Test
+  void entity_bodyIgnored_connectionStillReleased() {
+    // The D3 argument made live: read only headers, never the body, then prove follow-up
+    // requests still complete - a leaked connection would hang or fail them.
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    for (int i = 0; i < 5; i++) {
+      var re = client.entity().get(id).block();
+      assertThat(re.getHeaders()).isNotNull();
+    }
+    assertThat(client.get(id).block().getId()).isEqualTo(id);
+  }
 }

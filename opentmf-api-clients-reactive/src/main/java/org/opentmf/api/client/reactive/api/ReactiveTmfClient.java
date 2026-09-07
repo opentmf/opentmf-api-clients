@@ -60,6 +60,21 @@ public interface ReactiveTmfClient<C, U, R> {
    */
   GenericReactiveTmfClient sub(String template, Object... vars);
 
+  // --- ENTITY VIEW ---
+
+  /**
+   * The entity view of this client: the same verbs returning
+   * {@code Mono<ResponseEntity<...>>} so response headers and the status code are readable on the
+   * success path. List bodies are fully materialized {@code List<T>} - never a body {@code Flux}
+   * inside an entity. {@code listAll*} has no entity form (N pages means N header sets - no
+   * single entity could carry them honestly), {@code listPaged*} has none ({@code TmfPage}
+   * already is the header-derived view), and {@code sub} composes:
+   * {@code client.sub(...).entity()}. Errors still throw
+   * {@code OpenTmfClientResponseException}; failed-response headers come from the exception.
+   * The returned instance is cached - calling this repeatedly is free.
+   */
+  ReactiveTmfEntityClient<C, U, R> entity();
+
   // --- GET (auto-token) ---
 
   Mono<R> get(String id);

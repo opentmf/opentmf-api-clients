@@ -31,6 +31,7 @@ import org.opentmf.api.client.common.util.ResponseHeaderUtil;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.reactive.api.GenericReactiveTmfClient;
 import org.opentmf.api.client.reactive.api.ReactiveTmfClient;
+import org.opentmf.api.client.reactive.api.ReactiveTmfEntityClient;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
@@ -74,6 +75,8 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
   private final SubResourcePath subPath;
+  private final ReactiveTmfEntityClient<C, U, R> entityView =
+      new ReactiveTmfEntityClientImpl<>(this);
 
   public ReactiveTmfClientImpl(
       EndpointConfig endpointConfig,
@@ -110,6 +113,14 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   @Override public GenericReactiveTmfClient sub(String template, Object... vars) {
     return new GenericReactiveTmfClientImpl(endpointConfig, serverConfig, webClient, tokenService,
         clientProperties, subPath.append(template, vars));
+  }
+
+  // ==========================================================================
+  // ENTITY VIEW
+  // ==========================================================================
+
+  @Override public ReactiveTmfEntityClient<C, U, R> entity() {
+    return entityView;
   }
 
   // ==========================================================================
