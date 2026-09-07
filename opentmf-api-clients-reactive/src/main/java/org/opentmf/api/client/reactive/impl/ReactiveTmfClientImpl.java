@@ -11,6 +11,7 @@ import static org.opentmf.api.client.common.util.UriBuilderUtil.buildUri;
 import static org.opentmf.api.client.common.util.UriBuilderUtil.buildUriWithId;
 import static org.opentmf.api.client.common.util.UriBuilderUtil.withPagination;
 
+import java.lang.reflect.Array;
 import java.net.URI;
 import java.util.List;
 import java.util.Objects;
@@ -30,6 +31,7 @@ import org.opentmf.api.client.common.util.ResponseHeaderUtil;
 import org.opentmf.api.client.common.util.TmfApiClientConstants;
 import org.opentmf.api.client.reactive.api.GenericReactiveTmfClient;
 import org.opentmf.api.client.reactive.api.ReactiveTmfClient;
+import org.opentmf.api.client.reactive.api.ReactiveTmfEntityClient;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
@@ -53,6 +55,12 @@ import reactor.util.retry.RetryBackoffSpec;
  * <p>Fully concrete and extensible by subclassing. Constructor args replace the abstract-method
  * pattern from the old library, making subclasses very lightweight.
  *
+ * <p>Each verb terminates in an entity-returning core ({@code *EntityWithToken}) that reads the
+ * full {@link ResponseEntity}; the body-returning interface methods unwrap it via
+ * {@code Mono.justOrEmpty} (an empty body completes empty, exactly as {@code bodyToMono} did).
+ * The cores are what the entity view returned by {@code entity()} delegates to, so both views
+ * share one request path.
+ *
  * @param <C> create DTO type
  * @param <U> update/patch DTO type
  * @param <R> response type
@@ -67,6 +75,8 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
   private final SubResourcePath subPath;
+  private final ReactiveTmfEntityClient<C, U, R> entityView =
+      new ReactiveTmfEntityClientImpl<>(this);
 
   public ReactiveTmfClientImpl(
       EndpointConfig endpointConfig,
@@ -106,6 +116,14 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   }
 
   // ==========================================================================
+  // ENTITY VIEW
+  // ==========================================================================
+
+  @Override public ReactiveTmfEntityClient<C, U, R> entity() {
+    return entityView;
+  }
+
+  // ==========================================================================
   // Token helper
   // ==========================================================================
 
@@ -125,7 +143,13 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         tokenService.getTokenType(),
         token,
         mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()),
-        ctx);
+        ctx,
+        clientProperties.getAuthType());
+  }
+
+  /** The default response type, for the entity view's overload defaulting. */
+  Class<R> responseType() {
+    return responseType;
   }
 
   // ==========================================================================
@@ -162,12 +186,18 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> getWithToken(
       String token, String id, TmfRequestContext ctx, Class<T> type) {
+    // NOT .map(ResponseEntity::getBody): an empty body yields a null body, and map would throw.
+    return getEntityWithToken(token, id, ctx, type).flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> getEntityWithToken(
+      String token, String id, TmfRequestContext ctx, Class<T> type) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -205,7 +235,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Flux<T> listWithToken(String token, Pageable pageable, Class<T> type) {
     return retrieveSinglePageWithResponse(token, pageable, type)
-        .flatMapMany(TmfPage::getContent);
+        .flatMapIterable(TmfPage::getContent);
   }
 
   // ==========================================================================
@@ -252,35 +282,35 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   // LIST PAGED with metadata
   // ==========================================================================
 
-  @Override public Mono<TmfPage<Flux<R>>> listPaged() {
+  @Override public Mono<TmfPage<List<R>>> listPaged() {
     return getToken(Scope.LIST).flatMap(this::listPagedWithToken);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPaged(Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPaged(Class<T> type) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, type));
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPaged(Pageable pageable) {
+  @Override public Mono<TmfPage<List<R>>> listPaged(Pageable pageable) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, pageable));
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPaged(Pageable pageable, Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPaged(Pageable pageable, Class<T> type) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, pageable, type));
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPagedWithToken(String token) {
+  @Override public Mono<TmfPage<List<R>>> listPagedWithToken(String token) {
     return listPagedWithToken(token, responseType);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Class<T> type) {
     return listPagedWithToken(token, TmfOffsetRequest.of(), type);
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPagedWithToken(String token, Pageable pageable) {
+  @Override public Mono<TmfPage<List<R>>> listPagedWithToken(String token, Pageable pageable) {
     return listPagedWithToken(token, pageable, responseType);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(
+  @Override public <T> Mono<TmfPage<List<T>>> listPagedWithToken(
       String token, Pageable pageable, Class<T> type) {
     return retrieveSinglePageWithResponse(token, pageable, type);
   }
@@ -319,6 +349,11 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> postWithToken(
       String token, C obj, TmfRequestContext ctx, Class<T> type) {
+    return postEntityWithToken(token, obj, ctx, type).flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> postEntityWithToken(
+      String token, C obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
@@ -326,7 +361,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -364,6 +399,12 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> patchWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return patchEntityWithToken(token, id, obj, ctx, type)
+        .flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> patchEntityWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateMergePatch(headers(token, ctx));
@@ -371,7 +412,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -412,6 +453,12 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> patchWithToken(
       String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    return patchEntityWithToken(token, id, jsonPatch, ctx, type)
+        .flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> patchEntityWithToken(
+      String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
@@ -420,7 +467,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(jsonPatch.toJsonNode())
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -461,17 +508,30 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<List<T>> patchCollectionWithToken(
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    // The entity core always materializes a non-null List body, so map is safe here.
+    return patchCollectionEntityWithToken(token, jsonPatch, ctx, type)
+        .map(ResponseEntity::getBody);
+  }
+
+  @SuppressWarnings("unchecked")
+  <T> Mono<ResponseEntity<List<T>>> patchCollectionEntityWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
     return webClient.patch().uri(uri).headers(hh -> hh.addAll(h))
         .bodyValue(jsonPatch.toJsonNode())
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToFlux(type)
-        .collectList()
-        .retryWhen(retry());
+        .toEntity(arrayType)
+        .retryWhen(retry())
+        .map(entity -> {
+          T[] body = entity.getBody();
+          List<T> content = body != null ? List.of(body) : List.of();
+          return new ResponseEntity<>(content, entity.getHeaders(), entity.getStatusCode());
+        });
   }
 
   // ==========================================================================
@@ -508,6 +568,12 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> putWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return putEntityWithToken(token, id, obj, ctx, type)
+        .flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> putEntityWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
@@ -515,7 +581,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -544,14 +610,18 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   }
 
   @Override public Mono<Void> deleteWithToken(String token, String id, TmfRequestContext ctx) {
+    return deleteEntityWithToken(token, id, ctx).then();
+  }
+
+  Mono<ResponseEntity<Void>> deleteEntityWithToken(
+      String token, String id, TmfRequestContext ctx) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
         .toBodilessEntity()
-        .retryWhen(retry())
-        .then();
+        .retryWhen(retry());
   }
 
   @Override public <T> Mono<T> deleteWithToken(String token, String id, Class<T> type) {
@@ -560,12 +630,18 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Mono<T> deleteWithToken(
       String token, String id, Class<T> type, TmfRequestContext ctx) {
+    return deleteEntityWithToken(token, id, type, ctx)
+        .flatMap(e -> Mono.justOrEmpty(e.getBody()));
+  }
+
+  <T> Mono<ResponseEntity<T>> deleteEntityWithToken(
+      String token, String id, Class<T> type, TmfRequestContext ctx) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .bodyToMono(type)
+        .toEntity(type)
         .retryWhen(retry());
   }
 
@@ -573,22 +649,34 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   // Internal pagination helpers
   // ==========================================================================
 
-  private <T> Mono<TmfPage<Flux<T>>> retrieveSinglePageWithResponse(
+  @SuppressWarnings("unchecked")
+  <T> Mono<ResponseEntity<List<T>>> listEntityWithToken(
       String token, Pageable pageable, Class<T> type) {
     URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
     URI uri = withPagination(base, pageable);
 
     var h = prepareGetDelete(headers(token, toContext(pageable)));
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntityFlux(type)
+        .toEntity(arrayType)
         .retryWhen(retry())
+        .map(entity -> {
+          T[] body = entity.getBody();
+          List<T> content = body != null ? List.of(body) : List.of();
+          return new ResponseEntity<>(content, entity.getHeaders(), entity.getStatusCode());
+        });
+  }
+
+  private <T> Mono<TmfPage<List<T>>> retrieveSinglePageWithResponse(
+      String token, Pageable pageable, Class<T> type) {
+    return listEntityWithToken(token, pageable, type)
         .map(entity -> buildPage(entity, pageable));
   }
 
-  private <T> TmfPage<Flux<T>> buildPage(
-      ResponseEntity<Flux<T>> entity, Pageable pageable) {
+  private <T> TmfPage<List<T>> buildPage(
+      ResponseEntity<List<T>> entity, Pageable pageable) {
     long total = ResponseHeaderUtil.getXTotalCount(entity);
     int count  = ResponseHeaderUtil.getContentRangeItemCount(entity);
     return new OffsetPage<>(total, count, pageable, entity.getBody());
@@ -598,10 +686,10 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return retrieveSinglePageWithResponse(token, pageable, type)
         .flatMapMany(page -> {
           if (page.isLast()) {
-            return page.getContent();
+            return Flux.fromIterable(page.getContent());
           }
           return Flux.concat(
-              page.getContent(),
+              Flux.fromIterable(page.getContent()),
               recursiveRetrieve(token, page.getNextPageable(), type));
         });
   }

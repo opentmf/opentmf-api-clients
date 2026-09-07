@@ -4,6 +4,56 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.0.0] - unreleased
+
+### Added
+- **Entity view** on both client surfaces: `client.entity()` returns a
+  `TmfEntityClient` (sync) / `ReactiveTmfEntityClient` (reactive) whose verbs
+  return `ResponseEntity<...>` / `Mono<ResponseEntity<...>>`, so response
+  headers and the status code are readable on the success path — `Location`
+  after a create, an `ETag` for a conditional follow-up, any custom `X-*`
+  header. Same eight verb families and 8-overload ladder as the body view;
+  `listAll*` deliberately has no entity form (N pages means N header sets),
+  `listPaged*` has none (`TmfPage` already is the header-derived view), and
+  `sub` composes (`client.sub(...).entity()`). Errors still throw
+  `OpenTmfClientResponseException`; failed-response headers keep coming from
+  the exception. `delete`'s untyped form gains a real return value:
+  `ResponseEntity<Void>` carries the status the old `void` discarded. Reactive
+  list bodies inside entities are fully materialized `List<T>`, per the same
+  rule as `listPaged`.
+
+### Fixed
+- No-auth (`AuthType.NONE`) clients work: an `opentmf.api-clients` server whose
+  `client-ref` points at an http-client with neither `bearer-auth` nor
+  `basic-auth` block previously threw
+  `IllegalArgumentException: Authorization token must not be empty.` on every
+  call, before any request reached the network. Such a client now sends no
+  `Authorization` header at all. A token passed explicitly to a `…WithToken`
+  overload on a NONE client is sent verbatim as the whole credential (pass
+  `"Bearer eyJ…"` if a scheme is needed).
+
+### Changed
+- **Breaking:** reactive `listPaged*` returns `Mono<TmfPage<List<R>>>` instead
+  of `Mono<TmfPage<Flux<R>>>`. A body `Flux` inside a page was a
+  single-subscription live connection stream: reading only the metadata (which
+  our own tests did) left the connection undrained, and the content could
+  never be read twice. Pages are now fully materialized. Migration:
+  `flatMapMany(TmfPage::getContent)` becomes
+  `flatMapIterable(TmfPage::getContent)` — see MIGRATION.md. As a side effect,
+  reactive `list`/`listAll` keep their `Flux<R>` signatures but buffer each
+  page before emitting its items.
+- **A BEARER or BASIC client whose token service returns a blank token now
+  fails locally** with `IllegalArgumentException: Authorization token must not
+  be empty.` instead of sending `Authorization: Bearer ` and collecting a
+  remote 401. This is the behaviour the old guard was always documented to
+  provide; it never actually fired for authenticated clients.
+- `HeaderUtil.headersConsumer(...)` gains a fifth parameter — the client's
+  `AuthType` — and owns the whole authorization decision. The `prepare*`
+  methods no longer reject header sets without `Authorization` (a NONE
+  client's headers legitimately carry none); `validateAuthorization` is
+  removed. No delegating four-argument overload is kept, so every call site
+  states its auth type explicitly.
+
 ## [2.1.0] - 2026-08-20
 
 ### Added

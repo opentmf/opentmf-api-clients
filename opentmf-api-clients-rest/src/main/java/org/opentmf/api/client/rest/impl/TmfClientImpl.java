@@ -22,6 +22,7 @@ import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.api.GenericTmfClient;
 import org.opentmf.api.client.common.api.TmfClient;
+import org.opentmf.api.client.common.api.TmfEntityClient;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.JsonFilter;
@@ -47,6 +48,10 @@ import org.springframework.web.client.RestClient;
 /**
  * Synchronous (RestClient) implementation of {@link TmfClient}.
  *
+ * <p>Each verb terminates in an entity-returning core ({@code *EntityWithToken}) that reads the
+ * full {@link ResponseEntity}; the body-returning interface methods unwrap it. The cores are what
+ * the entity view returned by {@code entity()} delegates to, so both views share one request path.
+ *
  * @param <C> create DTO type
  * @param <U> update/patch DTO type
  * @param <R> response type
@@ -61,6 +66,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
   private final SubResourcePath subPath;
+  private final TmfEntityClient<C, U, R> entityView = new TmfEntityClientImpl<>(this);
 
   public TmfClientImpl(
       EndpointConfig endpointConfig,
@@ -100,6 +106,14 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   // ==========================================================================
+  // ENTITY VIEW
+  // ==========================================================================
+
+  @Override public TmfEntityClient<C, U, R> entity() {
+    return entityView;
+  }
+
+  // ==========================================================================
   // Token helper
   // ==========================================================================
 
@@ -112,7 +126,13 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   protected Consumer<HttpHeaders> headers(String token, TmfRequestContext ctx) {
     return headersConsumer(tokenService.getTokenType(), token,
-        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()), ctx);
+        mergeFixedHeaders(serverConfig.getFixedHeaders(), endpointConfig.getFixedHeaders()), ctx,
+        clientProperties.getAuthType());
+  }
+
+  /** The default response type, for the entity view's overload defaulting. */
+  Class<R> responseType() {
+    return responseType;
   }
 
   // ==========================================================================
@@ -148,10 +168,15 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public <T> T getWithToken(String token, String id, TmfRequestContext ctx, Class<T> type) {
+    return getEntityWithToken(token, id, ctx, type).getBody();
+  }
+
+  <T> ResponseEntity<T> getEntityWithToken(
+      String token, String id, TmfRequestContext ctx, Class<T> type) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return withRetry(() -> restClient.get().uri(uri).headers(hh -> hh.addAll(h))
-        .retrieve().body(type));
+        .retrieve().toEntity(type));
   }
 
   // ==========================================================================
@@ -188,6 +213,24 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> List<T> listWithToken(String token, Pageable pageable, Class<T> type) {
     return retrieveSinglePageWithResponse(token, pageable, type).getContent();
+  }
+
+  @SuppressWarnings("unchecked")
+  <T> ResponseEntity<List<T>> listEntityWithToken(String token, Pageable pageable, Class<T> type) {
+    URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
+    URI uri = withPagination(base, pageable);
+
+    var ctx = toContext(pageable);
+    var h = prepareGetDelete(headers(token, ctx));
+
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
+    ResponseEntity<T[]> entity = withRetry(
+        () -> restClient.get().uri(uri).headers(hh -> hh.addAll(h))
+            .retrieve().toEntity(arrayType));
+
+    T[] body = entity.getBody();
+    List<T> content = body != null ? List.of(body) : List.of();
+    return new ResponseEntity<>(content, entity.getHeaders(), entity.getStatusCode());
   }
 
   // ==========================================================================
@@ -299,11 +342,16 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public <T> T postWithToken(String token, C obj, TmfRequestContext ctx, Class<T> type) {
+    return postEntityWithToken(token, obj, ctx, type).getBody();
+  }
+
+  <T> ResponseEntity<T> postEntityWithToken(
+      String token, C obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return withRetry(() -> restClient.post().uri(uri).headers(hh -> hh.addAll(h))
-        .body(obj).retrieve().body(type));
+        .body(obj).retrieve().toEntity(type));
   }
 
   // ==========================================================================
@@ -339,11 +387,16 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public <T> T patchWithToken(String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return patchEntityWithToken(token, id, obj, ctx, type).getBody();
+  }
+
+  <T> ResponseEntity<T> patchEntityWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateMergePatch(headers(token, ctx));
     return withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
-        .body(obj).retrieve().body(type));
+        .body(obj).retrieve().toEntity(type));
   }
 
   // ==========================================================================
@@ -380,12 +433,17 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T patchWithToken(
       String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    return patchEntityWithToken(token, id, jsonPatch, ctx, type).getBody();
+  }
+
+  <T> ResponseEntity<T> patchEntityWithToken(
+      String token, String id, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     return withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
-        .body(jsonPatch.toJsonNode()).retrieve().body(type));
+        .body(jsonPatch.toJsonNode()).retrieve().toEntity(type));
   }
 
   // ==========================================================================
@@ -422,17 +480,25 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
     return patchCollectionWithToken(token, jsonPatch, null, type);
   }
 
-  @SuppressWarnings("unchecked")
   @Override public <T> List<T> patchCollectionWithToken(
+      String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
+    return patchCollectionEntityWithToken(token, jsonPatch, ctx, type).getBody();
+  }
+
+  @SuppressWarnings("unchecked")
+  <T> ResponseEntity<List<T>> patchCollectionEntityWithToken(
       String token, JsonPatch jsonPatch, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(jsonPatch,
         TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUri(serverConfig, endpointConfig, ctx, subPath);
     var h = prepareAndValidateJsonPatch(headers(token, ctx));
     Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
-    T[] body = withRetry(() -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
-        .body(jsonPatch.toJsonNode()).retrieve().body(arrayType));
-    return body != null ? List.of(body) : List.of();
+    ResponseEntity<T[]> entity = withRetry(
+        () -> restClient.patch().uri(uri).headers(hh -> hh.addAll(h))
+            .body(jsonPatch.toJsonNode()).retrieve().toEntity(arrayType));
+    T[] body = entity.getBody();
+    List<T> content = body != null ? List.of(body) : List.of();
+    return new ResponseEntity<>(content, entity.getHeaders(), entity.getStatusCode());
   }
 
   // ==========================================================================
@@ -469,11 +535,16 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T putWithToken(
       String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
+    return putEntityWithToken(token, id, obj, ctx, type).getBody();
+  }
+
+  <T> ResponseEntity<T> putEntityWithToken(
+      String token, String id, U obj, TmfRequestContext ctx, Class<T> type) {
     Objects.requireNonNull(obj, TmfApiClientConstants.ERR_NULL_BODY.formatted(type.getSimpleName()));
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareAndValidate(headers(token, ctx), MediaType.APPLICATION_JSON);
     return withRetry(() -> restClient.put().uri(uri).headers(hh -> hh.addAll(h))
-        .body(obj).retrieve().body(type));
+        .body(obj).retrieve().toEntity(type));
   }
 
   // ==========================================================================
@@ -501,10 +572,14 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   }
 
   @Override public void deleteWithToken(String token, String id, TmfRequestContext ctx) {
+    deleteEntityWithToken(token, id, ctx);
+  }
+
+  ResponseEntity<Void> deleteEntityWithToken(String token, String id, TmfRequestContext ctx) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
-    withRetry(() -> { restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
-        .retrieve().toBodilessEntity(); return null; });
+    return withRetry(() -> restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
+        .retrieve().toBodilessEntity());
   }
 
   @Override public <T> T deleteWithToken(String token, String id, Class<T> type) {
@@ -513,36 +588,28 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
 
   @Override public <T> T deleteWithToken(
       String token, String id, Class<T> type, TmfRequestContext ctx) {
+    return deleteEntityWithToken(token, id, type, ctx).getBody();
+  }
+
+  <T> ResponseEntity<T> deleteEntityWithToken(
+      String token, String id, Class<T> type, TmfRequestContext ctx) {
     URI uri = buildUriWithId(serverConfig, endpointConfig, id, ctx, subPath);
     var h = prepareGetDelete(headers(token, ctx));
     return withRetry(() -> restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
-        .retrieve().body(type));
+        .retrieve().toEntity(type));
   }
 
   // ==========================================================================
   // Internal pagination helpers
   // ==========================================================================
 
-  @SuppressWarnings("unchecked")
   private <T> TmfPage<List<T>> retrieveSinglePageWithResponse(
       String token, Pageable pageable, Class<T> type) {
-    URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
-    URI uri = withPagination(base, pageable);
-
-    var ctx = toContext(pageable);
-    var h = prepareGetDelete(headers(token, ctx));
-
-    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
-    ResponseEntity<T[]> entity = withRetry(
-        () -> restClient.get().uri(uri).headers(hh -> hh.addAll(h))
-            .retrieve().toEntity(arrayType));
-
-    T[] body = entity.getBody();
-    List<T> content = body != null ? List.of(body) : List.of();
+    ResponseEntity<List<T>> entity = listEntityWithToken(token, pageable, type);
 
     long total = ResponseHeaderUtil.getXTotalCount(entity);
     int count  = ResponseHeaderUtil.getContentRangeItemCount(entity);
-    return new OffsetPage<>(total, count, pageable, content);
+    return new OffsetPage<>(total, count, pageable, entity.getBody());
   }
 
   private <T> List<T> recursiveRetrieve(String token, Pageable pageable, Class<T> type) {

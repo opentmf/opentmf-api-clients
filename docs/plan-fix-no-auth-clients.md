@@ -153,14 +153,18 @@ no-auth signal are in hand: inside `headersConsumer`.
    (`TmfClientImpl.java:70`, `ReactiveTmfClientImpl.java:67`,
    `TmfHubClientImpl.java:42`, `ReactiveTmfHubClientImpl.java:46`), and
    `ClientProperties.getAuthType()` returns `AuthType.NONE` exactly when neither
-   `basic-auth` nor `bearer-auth` is configured. So each factory passes an
-   explicit `authRequired` flag:
+   `basic-auth` nor `bearer-auth` is configured. So each factory passes the
+   **`AuthType` itself** — not a bare boolean, whose meaning is invisible at the
+   call site (`…, ctx, true)`). `opentmf-api-clients-common` already depends on
+   `opentmf-http-clients-common` (where `AuthType` lives), so this costs no new
+   dependency, and a future auth type extends the enum instead of changing
+   `HeaderUtil`'s signature again:
 
    ```java
    protected Consumer<HttpHeaders> headers(String token, TmfRequestContext ctx) {
      return headersConsumer(tokenService.getTokenType(), token,
          mergeFixedHeaders(...), ctx,
-         clientProperties.getAuthType() != AuthType.NONE);
+         clientProperties.getAuthType());
    }
    ```
 
@@ -168,7 +172,7 @@ no-auth signal are in hand: inside `headersConsumer`.
 
    ```java
    return httpHeaders -> {
-     if (authRequired && !StringUtils.hasText(token)) {
+     if (authType != AuthType.NONE && !StringUtils.hasText(token)) {
        throw new IllegalArgumentException(ERR_EMPTY_AUTH_TOKEN);
      }
      if (StringUtils.hasText(token)) {
@@ -220,9 +224,9 @@ interfaces.
 Contained to **this repository**: `HeaderUtil`, its unit tests, the four
 `headers(...)` factories, and the IT fixtures (see *Tests*). `HeaderUtil` is a
 public class, so its surface does change — `headersConsumer` gains a fifth
-parameter, and the `prepare*` methods stop rejecting header sets without
-`Authorization`. No delegating four-argument overload is kept: a hidden
-`authRequired = true` default is precisely the kind of thing that would
+parameter (`AuthType`), and the `prepare*` methods stop rejecting header sets
+without `Authorization`. No delegating four-argument overload is kept: a hidden
+`authType = BEARER` default is precisely the kind of thing that would
 resurrect this defect in a forgotten call site. Both changes go into the 3.0.0
 CHANGELOG under `### Changed`, alongside the `### Fixed` entry for NONE clients.
 
@@ -249,8 +253,10 @@ refinement without changing `HeaderUtil`'s signature again.
 **`HeaderUtilTest` (common)** — pin the four-row matrix above:
 
 - NONE + blank token: headers carry **no** `Authorization` key and nothing
-  throws, on each of `prepareGetDelete`, `prepareAndValidate`,
-  `prepareAndValidateMergePatch` and `prepareAndValidateJsonPatch`.
+  throws, on each of the **five** public prepare methods: `prepareGetDelete`,
+  `prepareAndValidate`, `prepareAndValidatePatch` (public and callable
+  directly, not only via its two delegates), `prepareAndValidateMergePatch`
+  and `prepareAndValidateJsonPatch`.
 - NONE + explicit token: `Authorization` equals the token verbatim, no leading
   space, no scheme prefix.
 - BEARER + blank token: throws `ERR_EMPTY_AUTH_TOKEN`. This is a **new**
@@ -329,3 +335,27 @@ folded into the sections above:
 
 The open question about `…WithToken` on a NONE client is decided: send the
 caller's token verbatim.
+
+## Review corrections (2026-09-07, second pass)
+
+Independent senior review against the code; three fixations folded into the
+sections above:
+
+1. **The fifth parameter is `AuthType`, not `boolean`.** A bare
+   `authRequired = true` is unreadable at every call site. The common module
+   already depends on `opentmf-http-clients-common`, so passing
+   `clientProperties.getAuthType()` costs nothing and keeps the signature
+   stable if auth types are ever added. The consumer's check becomes
+   `authType != AuthType.NONE`.
+2. **`HeaderUtil` has five public prepare methods, not four.** The generic
+   `prepareAndValidatePatch(consumer, mediaType)` is public and callable
+   directly, not only via the merge/JSON delegates. The NONE-matrix unit tests
+   cover all five.
+3. **Noted edge, accepted as-is:** a BEARER/BASIC client whose token service
+   returns blank but whose `fixed-headers` (or request context) supply their
+   own `Authorization` value passes validation today and will **throw** after
+   the fix — the check reads the token, not the assembled headers. Supplying
+   `Authorization` via fixed headers on an authenticated client is a
+   misconfiguration, not a supported pattern; the new exception is the correct
+   outcome and needs no carve-out. Recorded so the behaviour change is a
+   decision, not a surprise.

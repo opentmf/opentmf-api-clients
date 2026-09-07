@@ -5,7 +5,7 @@ import org.springframework.data.domain.Pageable;
 /**
  * Pagination result with total-count metadata.
  *
- * @param <T> type of the page content (typically {@code List<R>} or {@code Flux<R>})
+ * @param <T> type of the page content (typically {@code List<R>})
  */
 public interface TmfPage<T> {
 

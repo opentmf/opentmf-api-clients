@@ -2,11 +2,13 @@ package org.opentmf.api.client.common.util;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThatCode;
 
 import java.util.Map;
 import java.util.function.Consumer;
 import org.junit.jupiter.api.Test;
 import org.opentmf.api.client.common.model.TmfRequestContext;
+import org.opentmf.client.common.model.AuthType;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.util.LinkedMultiValueMap;
@@ -15,6 +17,11 @@ class HeaderUtilTest {
 
   private static Consumer<HttpHeaders> authConsumer() {
     return h -> h.set(HttpHeaders.AUTHORIZATION, "Bearer test-token");
+  }
+
+  /** The consumer a NONE-auth client builds: blank type, blank token — the NoOp*TokenService case. */
+  private static Consumer<HttpHeaders> noneConsumer() {
+    return HeaderUtil.headersConsumer("", "", null, null, AuthType.NONE);
   }
 
   @Test
@@ -41,13 +48,6 @@ class HeaderUtilTest {
   }
 
   @Test
-  void prepareAndValidate_throwsWhenAuthorizationAbsent() {
-    assertThatThrownBy(() -> HeaderUtil.prepareAndValidate(h -> {}, MediaType.APPLICATION_JSON))
-        .isInstanceOf(IllegalArgumentException.class)
-        .hasMessageContaining("token");
-  }
-
-  @Test
   void prepareGetDelete_doesNotSetContentType() {
     var headers = HeaderUtil.prepareGetDelete(authConsumer());
     assertThat(headers.getContentType()).isNull();
@@ -68,18 +68,110 @@ class HeaderUtilTest {
         .startsWith(TmfApiClientConstants.MEDIA_TYPE_JSON_PATCH);
   }
 
+  // --- headersConsumer: the four-row auth matrix ---
+
   @Test
-  void headersConsumer_buildsCorrectly() {
-    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, null);
+  void headersConsumer_bearerWithToken_setsSchemeAndToken() {
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, null, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("Bearer my-token");
   }
 
   @Test
+  void headersConsumer_bearerWithBlankToken_throws() {
+    // NEW guarantee, not a preserved one: before the AuthType.NONE fix the assembled header was
+    // "Bearer " and hasText("Bearer ") is true, so a blank token sailed through to a remote 401.
+    var consumer = HeaderUtil.headersConsumer("Bearer", "", null, null, AuthType.BEARER);
+    var headers = new HttpHeaders();
+    assertThatThrownBy(() -> consumer.accept(headers))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("token");
+  }
+
+  @Test
+  void headersConsumer_basicWithBlankToken_throws() {
+    var consumer = HeaderUtil.headersConsumer("Basic", null, null, null, AuthType.BASIC);
+    var headers = new HttpHeaders();
+    assertThatThrownBy(() -> consumer.accept(headers))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("token");
+  }
+
+  @Test
+  void headersConsumer_noneWithBlankToken_setsNoAuthorizationHeader() {
+    var headers = new HttpHeaders();
+    noneConsumer().accept(headers);
+    assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+  }
+
+  @Test
+  void headersConsumer_noneWithExplicitToken_sendsItVerbatim() {
+    // A …WithToken overload on a NONE client: no token type of its own, so the caller's string is
+    // the whole credential — no scheme prefix, no leading space.
+    var consumer = HeaderUtil.headersConsumer("", "opaque-credential", null, null, AuthType.NONE);
+    var headers = new HttpHeaders();
+    consumer.accept(headers);
+    assertThat(headers.getFirst(HttpHeaders.AUTHORIZATION)).isEqualTo("opaque-credential");
+  }
+
+  @Test
+  void headersConsumer_nullAuthType_throwsEagerly() {
+    assertThatThrownBy(() -> HeaderUtil.headersConsumer("Bearer", "t", null, null, null))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("authType");
+  }
+
+  // --- NONE client through every public prepare method: no header, nothing throws ---
+
+  @Test
+  void prepareGetDelete_noneClient_noAuthorizationAndNoThrow() {
+    assertThatCode(() -> {
+      var headers = HeaderUtil.prepareGetDelete(noneConsumer());
+      assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+    }).doesNotThrowAnyException();
+  }
+
+  @Test
+  void prepareAndValidate_noneClient_noAuthorizationAndNoThrow() {
+    assertThatCode(() -> {
+      var headers = HeaderUtil.prepareAndValidate(noneConsumer(), MediaType.APPLICATION_JSON);
+      assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+      assertThat(headers.getContentType()).isEqualTo(MediaType.APPLICATION_JSON);
+    }).doesNotThrowAnyException();
+  }
+
+  @Test
+  void prepareAndValidatePatch_noneClient_noAuthorizationAndNoThrow() {
+    assertThatCode(() -> {
+      var headers = HeaderUtil.prepareAndValidatePatch(
+          noneConsumer(), TmfApiClientConstants.MEDIA_TYPE_MERGE_PATCH);
+      assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+    }).doesNotThrowAnyException();
+  }
+
+  @Test
+  void prepareAndValidateMergePatch_noneClient_noAuthorizationAndNoThrow() {
+    assertThatCode(() -> {
+      var headers = HeaderUtil.prepareAndValidateMergePatch(noneConsumer());
+      assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+    }).doesNotThrowAnyException();
+  }
+
+  @Test
+  void prepareAndValidateJsonPatch_noneClient_noAuthorizationAndNoThrow() {
+    assertThatCode(() -> {
+      var headers = HeaderUtil.prepareAndValidateJsonPatch(noneConsumer());
+      assertThat(headers.containsHeader(HttpHeaders.AUTHORIZATION)).isFalse();
+    }).doesNotThrowAnyException();
+  }
+
+  // --- pass-through behaviour, unchanged ---
+
+  @Test
   void headersConsumer_withFixedHeaders() {
     var consumer = HeaderUtil.headersConsumer(
-        "Bearer", "my-token", Map.of("X-Tenant", "t1"), null);
+        "Bearer", "my-token", Map.of("X-Tenant", "t1"), null, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst("X-Tenant")).isEqualTo("t1");
@@ -92,7 +184,7 @@ class HeaderUtilTest {
     headerParams.add("X-Ctx", "ctx-val");
     ctx.setHeaderParameters(headerParams);
 
-    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, ctx);
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, ctx, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst("X-Ctx")).isEqualTo("ctx-val");
@@ -110,7 +202,7 @@ class HeaderUtilTest {
 
   @Test
   void headersConsumer_defaultsAcceptToJson_whenAbsent() {
-    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, null);
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, null, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getAccept()).containsExactly(MediaType.APPLICATION_JSON);
@@ -121,7 +213,7 @@ class HeaderUtilTest {
     var consumer = HeaderUtil.headersConsumer(
         "Bearer", "my-token",
         Map.of(HttpHeaders.ACCEPT, "application/vnd.tmf.v4+json"),
-        null);
+        null, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst(HttpHeaders.ACCEPT)).isEqualTo("application/vnd.tmf.v4+json");
@@ -134,7 +226,7 @@ class HeaderUtilTest {
     headerParams.add(HttpHeaders.ACCEPT, "application/xml");
     ctx.setHeaderParameters(headerParams);
 
-    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, ctx);
+    var consumer = HeaderUtil.headersConsumer("Bearer", "my-token", null, ctx, AuthType.BEARER);
     var headers = new HttpHeaders();
     consumer.accept(headers);
     assertThat(headers.getFirst(HttpHeaders.ACCEPT)).isEqualTo("application/xml");

@@ -1,6 +1,7 @@
 package org.opentmf.api.client.hub.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockserver.model.HttpRequest.request;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.Scope;
@@ -18,7 +20,10 @@ import org.opentmf.api.client.hub.helper.MockServerUtils;
 import org.opentmf.api.client.hub.helper.MockTokenService;
 import org.opentmf.api.client.hub.model.EventSubscriptionInput;
 import org.opentmf.api.client.hub.model.HubRegistration;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
+import reactor.core.publisher.Mono;
+import org.opentmf.client.reactive.service.api.TokenService;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
 
@@ -58,6 +63,7 @@ class ReactiveTmfHubClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     WebClient webClient = WebClient.builder()
         .baseUrl(MockServerUtils.getBaseUrl()).build();
@@ -163,5 +169,66 @@ class ReactiveTmfHubClientIT {
   void unregisterListener_nullRegistration_throwsNpe() {
     assertThatThrownBy(() -> client.unregisterListener((HubRegistration) null))
         .isInstanceOf(NullPointerException.class);
+  }
+
+  // --- NONE-auth client (no bearer/basic block): no Authorization header, ever ---
+
+  private ReactiveTmfHubClientImpl noneAuthClient() {
+    ServerConfig sc = new ServerConfig();
+    sc.setBaseUrl(MockServerUtils.getBaseUrl());
+    sc.setContextPath("");
+    sc.setClientRef("default");
+    sc.setEndpoints(Map.of());
+
+    EndpointConfig ec = new EndpointConfig();
+    ec.setPath(path);
+
+    ClientProperties noneProps = new ClientProperties();
+    noneProps.setNumRetries(0);
+    noneProps.setRetryWaitDuration(Duration.ofMillis(100));
+    // no bearer-auth / basic-auth block: getAuthType() == NONE
+
+    TokenService blankTokenService = new TokenService() {
+      @Override public String getTokenType() { return ""; }
+      @Override public Mono<String> getToken() { return Mono.just(""); }
+      @Override public Mono<String> getToken(String additionalScopes) { return Mono.just(""); }
+    };
+
+    return new ReactiveTmfHubClientImpl(ec, sc,
+        WebClient.builder().baseUrl(MockServerUtils.getBaseUrl()).build(),
+        blankTokenService, noneProps);
+  }
+
+  @Test
+  void noneAuthClient_registerAndUnregister_sendNoAuthorizationHeader() {
+    MockServerUtils.setUpHubCallbacks(path);
+    var noneClient = noneAuthClient();
+
+    HubRegistration reg = noneClient.registerListener(subscriptionInput()).block();
+    assertThat(reg).isNotNull();
+    assertThat(reg.getId()).isNotBlank();
+    noneClient.unregisterListener(reg.getId()).block();
+
+    HttpRequest[] all = MockServerUtils.getMockServer().retrieveRecordedRequests(request());
+    assertThat(all).isNotEmpty();
+    for (HttpRequest r : all) {
+      assertThat(r.containsHeader("Authorization"))
+          .as("request %s %s must carry no Authorization header", r.getMethod(), r.getPath())
+          .isFalse();
+    }
+  }
+
+  @Test
+  void noneAuthClient_registerWithExplicitToken_sendsItVerbatim() {
+    MockServerUtils.setUpHubCallbacks(path);
+
+    StepVerifier.create(noneAuthClient().registerListener("opaque-credential", subscriptionInput()))
+        .assertNext(reg -> assertThat(reg.getId()).isNotBlank())
+        .verifyComplete();
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("POST").withPath(path));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("opaque-credential");
   }
 }

@@ -18,6 +18,7 @@ import org.opentmf.api.client.reactive.helper.MockTokenService;
 import org.opentmf.api.client.reactive.helper.TestResponseClass;
 import org.opentmf.api.client.reactive.helper.TestResponseModel;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.test.StepVerifier;
@@ -54,6 +55,7 @@ class GenericReactiveTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     client = new GenericReactiveTmfClientImpl(
         endpointConfig, serverConfig,

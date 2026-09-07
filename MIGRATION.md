@@ -5,6 +5,50 @@ libraries. New users do not need to read it — start from the [README](README.m
 
 ---
 
+## From 2.x to 3.0
+
+### Reactive `listPaged*` returns fully materialized pages (breaking)
+
+`ReactiveTmfClient.listPaged*` now returns `Mono<TmfPage<List<R>>>` instead of
+`Mono<TmfPage<Flux<R>>>`. The page body is fully materialized before you receive
+it, so headers and content can both be read, in any order, more than once, and
+the connection is released regardless of what you do with the page.
+
+```java
+// before
+client.listPaged(page, ProductOffering.class)
+    .flatMapMany(TmfPage::getContent)
+
+// after
+client.listPaged(page, ProductOffering.class)
+    .flatMapIterable(TmfPage::getContent)
+```
+
+Metadata accessors (`getTotalElements`, `hasNext`, `isLast`, …) are unchanged.
+Sync `listPaged*` is unchanged. No configuration changes.
+
+### Emission timing of reactive `list` / `listAll` (behavioural)
+
+Reactive single-page `list(...)` and `listAll(...)` keep their `Flux<R>`
+signatures but now buffer each page before emitting its items, instead of
+streaming items as they decode. Per-page memory is bounded by the page size;
+cross-page laziness is unchanged — pages are still fetched on demand.
+
+### `entity()` is a new abstract method on the client interfaces
+
+Any class that implements `TmfClient` or `ReactiveTmfClient` directly (rather
+than extending the shipped `TmfClientImpl` / `ReactiveTmfClientImpl`) stops
+compiling until it implements `entity()`. This is intended breakage in a major
+release; extenders of the shipped implementations are unaffected.
+
+### No-auth clients and blank tokens
+
+A `client-ref` pointing at an http-client with no `bearer-auth` / `basic-auth`
+block now works and sends no `Authorization` header (see the CHANGELOG). The
+flip side: a BEARER or BASIC client whose token service returns a blank token
+now fails locally with `IllegalArgumentException` instead of sending
+`Authorization: Bearer ` and collecting a remote 401.
+
 ## From `opentmf-clients-base`
 
 `opentmf-clients-base` remains in maintenance mode for Spring Boot 3.x users.

@@ -20,6 +20,13 @@ import org.springframework.data.domain.Pageable;
  *   <li><em>auto-token</em> – the implementation retrieves a token from {@code SyncTokenService}</li>
  *   <li><em>withToken</em> – the caller supplies an already-obtained token</li>
  * </ul>
+ *
+ * <p><b>{@code …WithToken} on a no-auth client:</b> when the referenced http-client configures
+ * neither {@code bearer-auth} nor {@code basic-auth} ({@code AuthType.NONE}), the client has no
+ * token scheme of its own, so a token passed to a {@code …WithToken} overload is sent
+ * <b>verbatim</b> as the whole {@code Authorization} value — pass {@code "Bearer eyJ…"} if a
+ * scheme is needed. With a blank token, a NONE client sends no {@code Authorization} header at
+ * all, while a BEARER/BASIC client fails fast with an {@link IllegalArgumentException}.
  */
 public interface TmfClient<C, U, R> {
 
@@ -49,6 +56,19 @@ public interface TmfClient<C, U, R> {
    *     does not match {@code vars.length} — validated eagerly, before any request is issued
    */
   GenericTmfClient sub(String template, Object... vars);
+
+  // --- ENTITY VIEW ---
+
+  /**
+   * The entity view of this client: the same verbs returning {@link
+   * org.springframework.http.ResponseEntity} so response headers and the status code are readable
+   * on the success path. {@code listAll*} has no entity form (N pages means N header sets - no
+   * single entity could carry them honestly), {@code listPaged*} has none ({@code TmfPage} already
+   * is the header-derived view), and {@code sub} composes: {@code client.sub(...).entity()}.
+   * Errors still throw {@code OpenTmfClientResponseException}; failed-response headers come from
+   * the exception. The returned instance is cached - calling this repeatedly is free.
+   */
+  TmfEntityClient<C, U, R> entity();
 
   // --- GET (auto-token) ---
 

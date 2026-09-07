@@ -124,7 +124,8 @@ public class TmfHubClientImpl implements TmfHubClient {
   }
 
   private Consumer<HttpHeaders> headers(String token) {
-    return headersConsumer(tokenService.getTokenType(), token, null, null);
+    return headersConsumer(tokenService.getTokenType(), token, null, null,
+        clientProperties.getAuthType());
   }
 
   private <T> T withRetry(Supplier<T> action) {

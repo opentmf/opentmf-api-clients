@@ -133,7 +133,8 @@ public class ReactiveTmfHubClientImpl implements ReactiveTmfHubClient {
   }
 
   private Consumer<HttpHeaders> headers(String token) {
-    return headersConsumer(tokenService.getTokenType(), token, null, null);
+    return headersConsumer(tokenService.getTokenType(), token, null, null,
+        clientProperties.getAuthType());
   }
 
   private RetryBackoffSpec retry() {

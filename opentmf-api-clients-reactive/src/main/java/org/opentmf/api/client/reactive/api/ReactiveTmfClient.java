@@ -22,6 +22,13 @@ import reactor.core.publisher.Mono;
  *   <li><em>auto-token</em> – the implementation retrieves a token from {@code TokenService}</li>
  *   <li><em>withToken</em> – the caller supplies an already-obtained token</li>
  * </ul>
+ *
+ * <p><b>{@code …WithToken} on a no-auth client:</b> when the referenced http-client configures
+ * neither {@code bearer-auth} nor {@code basic-auth} ({@code AuthType.NONE}), the client has no
+ * token scheme of its own, so a token passed to a {@code …WithToken} overload is sent
+ * <b>verbatim</b> as the whole {@code Authorization} value — pass {@code "Bearer eyJ…"} if a
+ * scheme is needed. With a blank token, a NONE client sends no {@code Authorization} header at
+ * all, while a BEARER/BASIC client fails fast with an {@link IllegalArgumentException}.
  */
 public interface ReactiveTmfClient<C, U, R> {
 
@@ -52,6 +59,21 @@ public interface ReactiveTmfClient<C, U, R> {
    *     does not match {@code vars.length} — validated eagerly, before any request is issued
    */
   GenericReactiveTmfClient sub(String template, Object... vars);
+
+  // --- ENTITY VIEW ---
+
+  /**
+   * The entity view of this client: the same verbs returning
+   * {@code Mono<ResponseEntity<...>>} so response headers and the status code are readable on the
+   * success path. List bodies are fully materialized {@code List<T>} - never a body {@code Flux}
+   * inside an entity. {@code listAll*} has no entity form (N pages means N header sets - no
+   * single entity could carry them honestly), {@code listPaged*} has none ({@code TmfPage}
+   * already is the header-derived view), and {@code sub} composes:
+   * {@code client.sub(...).entity()}. Errors still throw
+   * {@code OpenTmfClientResponseException}; failed-response headers come from the exception.
+   * The returned instance is cached - calling this repeatedly is free.
+   */
+  ReactiveTmfEntityClient<C, U, R> entity();
 
   // --- GET (auto-token) ---
 
@@ -115,23 +137,23 @@ public interface ReactiveTmfClient<C, U, R> {
 
   // --- LIST PAGED with metadata (auto-token) ---
 
-  Mono<TmfPage<Flux<R>>> listPaged();
+  Mono<TmfPage<List<R>>> listPaged();
 
-  <T> Mono<TmfPage<Flux<T>>> listPaged(Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPaged(Class<T> type);
 
-  Mono<TmfPage<Flux<R>>> listPaged(Pageable pageable);
+  Mono<TmfPage<List<R>>> listPaged(Pageable pageable);
 
-  <T> Mono<TmfPage<Flux<T>>> listPaged(Pageable pageable, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPaged(Pageable pageable, Class<T> type);
 
   // --- LIST PAGED with metadata (with token) ---
 
-  Mono<TmfPage<Flux<R>>> listPagedWithToken(String token);
+  Mono<TmfPage<List<R>>> listPagedWithToken(String token);
 
-  <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Class<T> type);
 
-  Mono<TmfPage<Flux<R>>> listPagedWithToken(String token, Pageable pageable);
+  Mono<TmfPage<List<R>>> listPagedWithToken(String token, Pageable pageable);
 
-  <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Pageable pageable, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Pageable pageable, Class<T> type);
 
   // --- POST (auto-token) ---
 

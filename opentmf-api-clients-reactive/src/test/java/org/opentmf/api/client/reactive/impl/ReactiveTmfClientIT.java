@@ -3,6 +3,7 @@ package org.opentmf.api.client.reactive.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -27,6 +28,7 @@ import org.opentmf.api.client.reactive.helper.MockTokenService;
 import org.opentmf.api.client.reactive.helper.TestResponseClass;
 import org.opentmf.api.client.reactive.helper.TestResponseModel;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.commons.patch.JsonPatch;
@@ -78,6 +80,7 @@ class ReactiveTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     client = new ReactiveTmfClientImpl<>(
         endpointConfig, serverConfig,
@@ -174,6 +177,33 @@ class ReactiveTmfClientIT {
           assertThat(res.getId()).isEqualTo(id);
         })
         .verifyComplete();
+  }
+
+  @Test
+  void get_emptyBody_completesEmptyInsteadOfErroring() {
+    // The justOrEmpty trap: with a null entity body, .map(ResponseEntity::getBody) would throw
+    // "The mapper returned a null value"; the unwrapper must complete empty like bodyToMono did.
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path + "/empty-204"))
+        .respond(response().withStatusCode(204));
+
+    StepVerifier.create(client.get("empty-204")).verifyComplete();
+  }
+
+  @Test
+  void get_sendsBearerAuthorizationHeader() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    StepVerifier.create(client.get(id))
+        .assertNext(res -> assertThat(res.getId()).isEqualTo(id))
+        .verifyComplete();
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("Bearer mock-test-token");
   }
 
   @Test
@@ -325,7 +355,7 @@ class ReactiveTmfClientIT {
 
     StepVerifier.create(
             client.listPaged(TmfOffsetRequest.of(0, 10))
-                .flatMapMany(TmfPage::getContent)
+                .flatMapIterable(TmfPage::getContent)
                 .collectList())
         .assertNext(list -> assertThat(list).hasSize(3))
         .verifyComplete();
@@ -705,7 +735,7 @@ class ReactiveTmfClientIT {
     MockServerUtils.seedData(path, 3);
 
     StepVerifier.create(client.listPaged()
-            .flatMapMany(TmfPage::getContent).collectList())
+            .flatMapIterable(TmfPage::getContent).collectList())
         .assertNext(list -> assertThat(list).hasSizeGreaterThanOrEqualTo(3))
         .verifyComplete();
   }
@@ -717,7 +747,7 @@ class ReactiveTmfClientIT {
     MockServerUtils.seedData(path, 3);
 
     StepVerifier.create(client.listPaged(TestResponseClass.class)
-            .flatMapMany(TmfPage::getContent).collectList())
+            .flatMapIterable(TmfPage::getContent).collectList())
         .assertNext(list -> assertThat(list).isNotEmpty())
         .verifyComplete();
   }
@@ -798,6 +828,7 @@ class ReactiveTmfClientIT {
     ClientProperties cp = new ClientProperties();
     cp.setNumRetries(0);
     cp.setRetryWaitDuration(Duration.ofMillis(100));
+    cp.setBearerAuth(new BearerAuthConfig());
 
     var noScopeClient = new ReactiveTmfClientImpl<>(
         ec, sc, WebClient.create(), new MockTokenService(), cp, TestResponseModel.class);
@@ -945,6 +976,7 @@ class ReactiveTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     List<String> requestedScopes = new ArrayList<>();
     TokenService recordingTokenService = new MockTokenService() {
@@ -997,5 +1029,259 @@ class ReactiveTmfClientIT {
         .hasMessageContaining(SUB_TEMPLATE);
 
     assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request())).isEmpty();
+  }
+
+  // --- NONE-auth client (no bearer/basic block): no Authorization header, ever ---
+
+  private ReactiveTmfClientImpl<Map<String, Object>, Map<String, Object>, TestResponseModel>
+      noneAuthClient() {
+    ServerConfig sc = new ServerConfig();
+    sc.setBaseUrl(MockServerUtils.getBaseUrl());
+    sc.setContextPath("");
+    sc.setClientRef("default");
+    sc.setEndpoints(Map.of());
+
+    EndpointConfig ec = new EndpointConfig();
+    ec.setPath(path);
+
+    ClientProperties noneProps = new ClientProperties();
+    noneProps.setNumRetries(0);
+    noneProps.setRetryWaitDuration(Duration.ofMillis(100));
+    // no bearer-auth / basic-auth block: getAuthType() == NONE
+
+    TokenService blankTokenService = new TokenService() {
+      @Override public String getTokenType() { return ""; }
+      @Override public Mono<String> getToken() { return Mono.just(""); }
+      @Override public Mono<String> getToken(String additionalScopes) { return Mono.just(""); }
+    };
+
+    return new ReactiveTmfClientImpl<>(ec, sc, WebClient.create(),
+        blankTokenService, noneProps, TestResponseModel.class);
+  }
+
+  @Test
+  void noneAuthClient_allVerbs_sendNoAuthorizationHeader() {
+    MockServerUtils.setUpAllDynamicCallbacks(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
+    var noneClient = noneAuthClient();
+
+    TestResponseModel created = noneClient.post(testDataMap()).block();
+    assertThat(created).isNotNull();
+    String id = created.getId();
+
+    assertThat(noneClient.get(id).block().getId()).isEqualTo(id);
+    assertThat(noneClient.list().collectList().block()).isNotEmpty();
+    assertThat(noneClient.put(id, Map.of("name", "put-name")).block().getId()).isEqualTo(id);
+    assertThat(noneClient.patch(id, Map.of("description", "merge-patched")).block().getId())
+        .isEqualTo(id);
+    assertThat(noneClient
+        .patch(id, JsonPatch.builder().replace("/description", "json-patched").build())
+        .block().getId()).isEqualTo(id);
+    assertThat(noneClient.patchCollection(
+        JsonPatch.builder().add("/", Map.of("name", "N1")).build()).block()).hasSize(1);
+    noneClient.delete(id).block();
+
+    HttpRequest[] all = MockServerUtils.getMockServer().retrieveRecordedRequests(request());
+    assertThat(all).isNotEmpty();
+    for (HttpRequest r : all) {
+      assertThat(r.containsHeader("Authorization"))
+          .as("request %s %s must carry no Authorization header", r.getMethod(), r.getPath())
+          .isFalse();
+    }
+  }
+
+  @Test
+  void noneAuthClient_withExplicitToken_sendsItVerbatim() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    StepVerifier.create(noneAuthClient().getWithToken("opaque-credential", id))
+        .assertNext(res -> assertThat(res.getId()).isEqualTo(id))
+        .verifyComplete();
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("opaque-credential");
+  }
+
+  @Test
+  void list_emptyBody_returnsEmpty() {
+    // 200 with no body: the page core's null-body branch materializes an empty list.
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path))
+        .respond(response().withStatusCode(200));
+
+    StepVerifier.create(client.list()).verifyComplete();
+  }
+
+  @Test
+  void patchCollection_emptyBody_returnsEmptyList() {
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("PATCH").withPath(path))
+        .respond(response().withStatusCode(200));
+
+    StepVerifier.create(client.patchCollection(
+            JsonPatch.builder().add("/", Map.of("name", "x")).build()))
+        .assertNext(list -> assertThat(list).isEmpty())
+        .verifyComplete();
+  }
+
+  @Test
+  void listPaged_contentIsReadableTwice() {
+    // Impossible under the old Mono<TmfPage<Flux<R>>> shape - a body Flux rejects a second
+    // subscriber - and the point of the 3.0.0 alignment: a page handed to a caller is fully
+    // materialized, so headers and content can both be read, in any order, more than once.
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 5);
+
+    TmfPage<List<TestResponseModel>> page = client.listPaged(TmfOffsetRequest.of(0, 10)).block();
+    assertThat(page).isNotNull();
+    List<TestResponseModel> first = page.getContent();
+    List<TestResponseModel> second = page.getContent();
+    assertThat(second).isEqualTo(first).isNotEmpty();
+    assertThat(page.getTotalElements()).isGreaterThanOrEqualTo(5);
+  }
+
+  // --- ENTITY VIEW ---
+
+  @Test
+  void entity_isReachableAndCached() {
+    assertThat(client.entity()).isSameAs(client.entity());
+  }
+
+  @Test
+  void entity_get_statusHeadersAndBodyMatchBodyView() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().get(id).block();
+    assertThat(re).isNotNull();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isEqualTo(client.get(id).block().getId());
+  }
+
+  @Test
+  void entity_get_exposesCustomResponseHeader() {
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path + "/probe-1"))
+        .respond(response()
+            .withStatusCode(200)
+            .withHeader("Content-Type", "application/json")
+            .withHeader("X-Entity-Probe", "probe-value")
+            .withBody("{\"id\":\"probe-1\"}"));
+
+    var re = client.entity().get("probe-1").block();
+    assertThat(re.getHeaders().getFirst("X-Entity-Probe")).isEqualTo("probe-value");
+    assertThat(re.getBody().getId()).isEqualTo("probe-1");
+  }
+
+  @Test
+  void entity_list_readsXTotalCountOffTheEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 4);
+
+    var re = client.entity().list().block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).isNotEmpty();
+    assertThat(Long.parseLong(re.getHeaders().getFirst("X-Total-Count")))
+        .isGreaterThanOrEqualTo(4);
+  }
+
+  @Test
+  void entity_list_bodyIsReadableTwice() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 3);
+
+    var re = client.entity().list().block();
+    assertThat(re.getBody()).isEqualTo(re.getBody()).isNotEmpty();
+  }
+
+  @Test
+  void entity_post_returnsCreatedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    Map<String, Object> data = testDataMap();
+
+    var re = client.entity().post(data).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isNotBlank();
+    assertThat(re.getBody().getName()).isEqualTo(data.get("name"));
+  }
+
+  @Test
+  void entity_put_returnsUpdatedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicPutCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().put(id, Map.of("name", "entity-put")).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getId()).isEqualTo(id);
+  }
+
+  @Test
+  void entity_mergePatch_returnsPatchedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicMergePatchCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().patch(id, Map.of("description", "entity-merge")).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getDescription()).isEqualTo("entity-merge");
+  }
+
+  @Test
+  void entity_jsonPatch_returnsPatchedEntity() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicJsonPatchCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().patch(id,
+        JsonPatch.builder().replace("/description", "entity-json").build()).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody().getDescription()).isEqualTo("entity-json");
+  }
+
+  @Test
+  void entity_patchCollection_returnsListEntity() {
+    MockServerUtils.setUpDynamicJsonPatchCollectionCallback(path);
+
+    var re = client.entity().patchCollection(
+        JsonPatch.builder().add("/", Map.of("name", "E1")).build()).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).hasSize(1);
+    assertThat(re.getBody().get(0).getName()).isEqualTo("E1");
+  }
+
+  @Test
+  void entity_delete_returnsVoidEntityWithStatus() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicDeleteCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    var re = client.entity().delete(id).block();
+    assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
+    assertThat(re.getBody()).isNull();
+  }
+
+  @Test
+  void entity_bodyIgnored_connectionStillReleased() {
+    // The D3 argument made live: read only headers, never the body, then prove follow-up
+    // requests still complete - a leaked connection would hang or fail them.
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    for (int i = 0; i < 5; i++) {
+      var re = client.entity().get(id).block();
+      assertThat(re.getHeaders()).isNotNull();
+    }
+    assertThat(client.get(id).block().getId()).isEqualTo(id);
   }
 }
