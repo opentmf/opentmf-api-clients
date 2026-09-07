@@ -369,7 +369,9 @@ change.
 ## Versioning and release
 
 - Bump every module `2.1.1-SNAPSHOT` → `3.0.0-SNAPSHOT` via
-  `mvn versions:set -DnewVersion=3.0.0-SNAPSHOT -DprocessAllModules`.
+  `mvn versions:set -DnewVersion=3.0.0-SNAPSHOT -DprocessAllModules
+  -DgenerateBackupPoms=false`. **This is the first commit on the branch** — see
+  *Work order* for why.
 - New `## [3.0.0] - <release date>` section in `CHANGELOG.md` above `## [2.1.0]`
   (bare numeric heading, no `-SNAPSHOT`), with `### Added` for the entity view
   and `### Changed` for the `listPaged` signature.
@@ -396,8 +398,8 @@ reason to bundle it is sequencing, not semantics:
   change that *unblocks* a previously impossible configuration is best announced
   where people are already looking.
 
-**Ordering constraint.** Do the no-auth fix **before** step 1 of the work order
-below. It rewrites `validateAuthorization` and `headersConsumer`; the entity
+**Ordering constraint.** Do the no-auth fix **before** the entity refactor
+(work-order step 3). It rewrites `validateAuthorization` and `headersConsumer`; the entity
 refactor rewrites the code that *calls* them. Fix-then-refactor keeps each
 commit's diff about one thing. That plan's own tests must be green before the
 entity work starts.
@@ -483,22 +485,52 @@ every overload or the ladder will drag the ratio down. Budget for that: it is
 
 ## Work order
 
-0. Land the no-auth fix per its own plan (`HeaderUtil` + all four `headers(...)`
+1. **Version bump to `3.0.0-SNAPSHOT`** across every module, plus the empty
+   `## [3.0.0]` CHANGELOG heading.
+2. **No-auth fix** per its own plan (`HeaderUtil` + all four `headers(...)`
    factories, including both hub clients), with its regression tests. No
-   `opentmf-http-clients` change is required. Green before anything below
-   starts.
-1. Refactor sync verbs to entity-returning cores + body unwrappers. ITs green, no
-   public API change yet.
-2. Same for reactive, including the `justOrEmpty` handling. ITs green.
-3. `listPaged` alignment (reactive interface + impl + ITs + README snippet).
-4. `TmfEntityClient` + `TmfEntityClientImpl` + `entity()` on `TmfClient`. ITs.
-5. `ReactiveTmfEntityClient` + impl + `entity()` on `ReactiveTmfClient`. ITs.
-6. Version bump, CHANGELOG, MIGRATION, README.
-7. Release readiness: both allowed `versions-maven-plugin` goals with every
-   profile activated and the mandatory ignore regex, full build on JDK 17.
+   `opentmf-http-clients` change is required.
+3. **Sync entity-core refactor** — every verb becomes an entity-returning core
+   with the body method unwrapping it. No public API change; the untouched IT
+   suite is the guard.
+4. **Reactive entity-core refactor** — same shape, plus the `justOrEmpty`
+   handling and the 204/empty-body test.
+5. **`listPaged` alignment** — reactive interface + impl + ITs + README snippet
+   + `MIGRATION.md` + CHANGELOG `### Changed`.
+6. **Sync entity view** — `TmfEntityClient` + impl + `entity()` on `TmfClient`,
+   ITs, CHANGELOG `### Added`.
+7. **Reactive entity view** — the same for `ReactiveTmfClient`.
+8. **Docs** — README "Response headers" section, interface javadoc for D2 and D5.
+9. **Release gate** — both allowed `versions-maven-plugin` goals with every
+   profile activated and the mandatory ignore regex, full build on JDK 17, then
+   cut 3.0.0.
 
-Steps 1–2 are behaviour-neutral and independently revertable; steps 3–5 each
-land as one reviewable commit.
+### Why this order
+
+- **Version first.** The CHANGELOG heading is keyed off the pom version. With
+  the pom still at `2.1.1-SNAPSHOT`, any CHANGELOG line added mid-stream would
+  sit under a `## [3.0.0]` heading that contradicts it. Bumping first lets every
+  functional commit carry its own CHANGELOG lines as it lands, instead of one
+  retrospective doc commit at the end that cannot be reviewed against the diffs.
+  The cost — it forecloses shipping the no-auth fix as a `2.1.1` hotfix — is
+  already an accepted decision (see *Bundled: no-auth support*).
+- **Fix before refactor.** Step 2 rewrites `validateAuthorization` and
+  `headersConsumer`; steps 3-4 rewrite the code that *calls* them. This way each
+  commit's diff is about one thing.
+- **Sync before reactive.** Sync has no null-body trap. Establishing the core
+  shape there makes the reactive commit a mirror plus one known hazard, rather
+  than two novel things at once.
+- **Alignment before the entity views.** Step 5 introduces the
+  `toEntity(arrayType)` path in reactive, which step 7's single-page `list`
+  reuses. Building the entity view first means writing that path twice and then
+  deduplicating it.
+- **Refactors before new surface.** Steps 3-4 are behaviour-neutral and guarded
+  by the untouched IT suites, so if something breaks after step 6 you know it is
+  new surface, not the rewiring of every existing verb.
+
+Steps 1-2 are shippable independently of everything after them; steps 3-4 are
+behaviour-neutral and revertable; steps 5, 6 and 7 each land as one reviewable
+commit.
 
 ---
 
