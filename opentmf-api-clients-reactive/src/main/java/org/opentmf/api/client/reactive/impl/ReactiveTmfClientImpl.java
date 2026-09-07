@@ -224,7 +224,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
 
   @Override public <T> Flux<T> listWithToken(String token, Pageable pageable, Class<T> type) {
     return retrieveSinglePageWithResponse(token, pageable, type)
-        .flatMapMany(TmfPage::getContent);
+        .flatMapIterable(TmfPage::getContent);
   }
 
   // ==========================================================================
@@ -271,35 +271,35 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   // LIST PAGED with metadata
   // ==========================================================================
 
-  @Override public Mono<TmfPage<Flux<R>>> listPaged() {
+  @Override public Mono<TmfPage<List<R>>> listPaged() {
     return getToken(Scope.LIST).flatMap(this::listPagedWithToken);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPaged(Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPaged(Class<T> type) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, type));
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPaged(Pageable pageable) {
+  @Override public Mono<TmfPage<List<R>>> listPaged(Pageable pageable) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, pageable));
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPaged(Pageable pageable, Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPaged(Pageable pageable, Class<T> type) {
     return getToken(Scope.LIST).flatMap(t -> listPagedWithToken(t, pageable, type));
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPagedWithToken(String token) {
+  @Override public Mono<TmfPage<List<R>>> listPagedWithToken(String token) {
     return listPagedWithToken(token, responseType);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Class<T> type) {
+  @Override public <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Class<T> type) {
     return listPagedWithToken(token, TmfOffsetRequest.of(), type);
   }
 
-  @Override public Mono<TmfPage<Flux<R>>> listPagedWithToken(String token, Pageable pageable) {
+  @Override public Mono<TmfPage<List<R>>> listPagedWithToken(String token, Pageable pageable) {
     return listPagedWithToken(token, pageable, responseType);
   }
 
-  @Override public <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(
+  @Override public <T> Mono<TmfPage<List<T>>> listPagedWithToken(
       String token, Pageable pageable, Class<T> type) {
     return retrieveSinglePageWithResponse(token, pageable, type);
   }
@@ -638,22 +638,34 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
   // Internal pagination helpers
   // ==========================================================================
 
-  private <T> Mono<TmfPage<Flux<T>>> retrieveSinglePageWithResponse(
+  @SuppressWarnings("unchecked")
+  <T> Mono<ResponseEntity<List<T>>> listEntityWithToken(
       String token, Pageable pageable, Class<T> type) {
     URI base = buildBaseUri(serverConfig, endpointConfig, subPath);
     URI uri = withPagination(base, pageable);
 
     var h = prepareGetDelete(headers(token, toContext(pageable)));
+    Class<T[]> arrayType = (Class<T[]>) Array.newInstance(type, 0).getClass();
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntityFlux(type)
+        .toEntity(arrayType)
         .retryWhen(retry())
+        .map(entity -> {
+          T[] body = entity.getBody();
+          List<T> content = body != null ? List.of(body) : List.of();
+          return new ResponseEntity<>(content, entity.getHeaders(), entity.getStatusCode());
+        });
+  }
+
+  private <T> Mono<TmfPage<List<T>>> retrieveSinglePageWithResponse(
+      String token, Pageable pageable, Class<T> type) {
+    return listEntityWithToken(token, pageable, type)
         .map(entity -> buildPage(entity, pageable));
   }
 
-  private <T> TmfPage<Flux<T>> buildPage(
-      ResponseEntity<Flux<T>> entity, Pageable pageable) {
+  private <T> TmfPage<List<T>> buildPage(
+      ResponseEntity<List<T>> entity, Pageable pageable) {
     long total = ResponseHeaderUtil.getXTotalCount(entity);
     int count  = ResponseHeaderUtil.getContentRangeItemCount(entity);
     return new OffsetPage<>(total, count, pageable, entity.getBody());
@@ -663,10 +675,10 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return retrieveSinglePageWithResponse(token, pageable, type)
         .flatMapMany(page -> {
           if (page.isLast()) {
-            return page.getContent();
+            return Flux.fromIterable(page.getContent());
           }
           return Flux.concat(
-              page.getContent(),
+              Flux.fromIterable(page.getContent()),
               recursiveRetrieve(token, page.getNextPageable(), type));
         });
   }

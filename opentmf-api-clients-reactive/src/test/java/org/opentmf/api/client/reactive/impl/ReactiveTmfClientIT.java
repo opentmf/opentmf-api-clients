@@ -355,7 +355,7 @@ class ReactiveTmfClientIT {
 
     StepVerifier.create(
             client.listPaged(TmfOffsetRequest.of(0, 10))
-                .flatMapMany(TmfPage::getContent)
+                .flatMapIterable(TmfPage::getContent)
                 .collectList())
         .assertNext(list -> assertThat(list).hasSize(3))
         .verifyComplete();
@@ -735,7 +735,7 @@ class ReactiveTmfClientIT {
     MockServerUtils.seedData(path, 3);
 
     StepVerifier.create(client.listPaged()
-            .flatMapMany(TmfPage::getContent).collectList())
+            .flatMapIterable(TmfPage::getContent).collectList())
         .assertNext(list -> assertThat(list).hasSizeGreaterThanOrEqualTo(3))
         .verifyComplete();
   }
@@ -747,7 +747,7 @@ class ReactiveTmfClientIT {
     MockServerUtils.seedData(path, 3);
 
     StepVerifier.create(client.listPaged(TestResponseClass.class)
-            .flatMapMany(TmfPage::getContent).collectList())
+            .flatMapIterable(TmfPage::getContent).collectList())
         .assertNext(list -> assertThat(list).isNotEmpty())
         .verifyComplete();
   }
@@ -1105,5 +1105,44 @@ class ReactiveTmfClientIT {
         .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
     assertThat(recorded).hasSize(1);
     assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("opaque-credential");
+  }
+
+  @Test
+  void list_emptyBody_returnsEmpty() {
+    // 200 with no body: the page core's null-body branch materializes an empty list.
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("GET").withPath(path))
+        .respond(response().withStatusCode(200));
+
+    StepVerifier.create(client.list()).verifyComplete();
+  }
+
+  @Test
+  void patchCollection_emptyBody_returnsEmptyList() {
+    MockServerUtils.getMockServer()
+        .when(request().withMethod("PATCH").withPath(path))
+        .respond(response().withStatusCode(200));
+
+    StepVerifier.create(client.patchCollection(
+            JsonPatch.builder().add("/", Map.of("name", "x")).build()))
+        .assertNext(list -> assertThat(list).isEmpty())
+        .verifyComplete();
+  }
+
+  @Test
+  void listPaged_contentIsReadableTwice() {
+    // Impossible under the old Mono<TmfPage<Flux<R>>> shape - a body Flux rejects a second
+    // subscriber - and the point of the 3.0.0 alignment: a page handed to a caller is fully
+    // materialized, so headers and content can both be read, in any order, more than once.
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetListCallback(path);
+    MockServerUtils.seedData(path, 5);
+
+    TmfPage<List<TestResponseModel>> page = client.listPaged(TmfOffsetRequest.of(0, 10)).block();
+    assertThat(page).isNotNull();
+    List<TestResponseModel> first = page.getContent();
+    List<TestResponseModel> second = page.getContent();
+    assertThat(second).isEqualTo(first).isNotEmpty();
+    assertThat(page.getTotalElements()).isGreaterThanOrEqualTo(5);
   }
 }

@@ -294,7 +294,7 @@ Source files:
 | Read one | `R get(id)` | `Mono<R> get(id)` |
 | List one page | `List<R> list(pageable)` | `Flux<R> list(pageable)` |
 | List all pages | `List<R> listAll(pageable)` | `Flux<R> listAll(pageable)` |
-| List with metadata | `TmfPage<List<R>> listPaged(pageable)` | `Mono<TmfPage<Flux<R>>> listPaged(pageable)` |
+| List with metadata | `TmfPage<List<R>> listPaged(pageable)` | `Mono<TmfPage<List<R>>> listPaged(pageable)` |
 | Create | `R post(C obj)` | `Mono<R> post(C obj)` |
 | Merge patch | `R patch(id, U obj)` | `Mono<R> patch(id, U obj)` |
 | JSON patch | `R patch(id, JsonPatch jp)` | `Mono<R> patch(id, JsonPatch jp)` |
@@ -358,7 +358,7 @@ The three list flavours differ only in what they return:
 |---|---|---|---|
 | `list(...)` | `List<R>` | `Flux<R>` | one page worth of items (single HTTP call) |
 | `listAll(...)` | `List<R>` | `Flux<R>` | walks every page until the API reports no `next` link |
-| `listPaged(...)` | `TmfPage<List<R>>` | `Mono<TmfPage<Flux<R>>>` | one page **plus** metadata (`X-Total-Count`, `hasNext()`, …) — see [Pagination](#pagination) |
+| `listPaged(...)` | `TmfPage<List<R>>` | `Mono<TmfPage<List<R>>>` | one page **plus** metadata (`X-Total-Count`, `hasNext()`, …) — see [Pagination](#pagination) |
 
 ### Write operations
 
@@ -518,7 +518,7 @@ TmfOffsetRequest page = TmfOffsetRequest.of(0, 20);
 Flux<ProductOffering> items = client.list(page, ProductOffering.class);
 Flux<ProductOffering> all   = client.listAll(ProductOffering.class);
 
-Mono<TmfPage<Flux<ProductOffering>>> paged = client.listPaged(page, ProductOffering.class);
+Mono<TmfPage<List<ProductOffering>>> paged = client.listPaged(page, ProductOffering.class);
 paged.map(TmfPage::getTotalElements);
 paged.map(TmfPage::hasNext);
 ```

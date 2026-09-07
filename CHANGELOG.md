@@ -17,6 +17,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `"Bearer eyJ…"` if a scheme is needed).
 
 ### Changed
+- **Breaking:** reactive `listPaged*` returns `Mono<TmfPage<List<R>>>` instead
+  of `Mono<TmfPage<Flux<R>>>`. A body `Flux` inside a page was a
+  single-subscription live connection stream: reading only the metadata (which
+  our own tests did) left the connection undrained, and the content could
+  never be read twice. Pages are now fully materialized. Migration:
+  `flatMapMany(TmfPage::getContent)` becomes
+  `flatMapIterable(TmfPage::getContent)` — see MIGRATION.md. As a side effect,
+  reactive `list`/`listAll` keep their `Flux<R>` signatures but buffer each
+  page before emitting its items.
 - **A BEARER or BASIC client whose token service returns a blank token now
   fails locally** with `IllegalArgumentException: Authorization token must not
   be empty.` instead of sending `Authorization: Bearer ` and collecting a

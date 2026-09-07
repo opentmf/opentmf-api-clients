@@ -122,23 +122,23 @@ public interface ReactiveTmfClient<C, U, R> {
 
   // --- LIST PAGED with metadata (auto-token) ---
 
-  Mono<TmfPage<Flux<R>>> listPaged();
+  Mono<TmfPage<List<R>>> listPaged();
 
-  <T> Mono<TmfPage<Flux<T>>> listPaged(Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPaged(Class<T> type);
 
-  Mono<TmfPage<Flux<R>>> listPaged(Pageable pageable);
+  Mono<TmfPage<List<R>>> listPaged(Pageable pageable);
 
-  <T> Mono<TmfPage<Flux<T>>> listPaged(Pageable pageable, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPaged(Pageable pageable, Class<T> type);
 
   // --- LIST PAGED with metadata (with token) ---
 
-  Mono<TmfPage<Flux<R>>> listPagedWithToken(String token);
+  Mono<TmfPage<List<R>>> listPagedWithToken(String token);
 
-  <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Class<T> type);
 
-  Mono<TmfPage<Flux<R>>> listPagedWithToken(String token, Pageable pageable);
+  Mono<TmfPage<List<R>>> listPagedWithToken(String token, Pageable pageable);
 
-  <T> Mono<TmfPage<Flux<T>>> listPagedWithToken(String token, Pageable pageable, Class<T> type);
+  <T> Mono<TmfPage<List<T>>> listPagedWithToken(String token, Pageable pageable, Class<T> type);
 
   // --- POST (auto-token) ---
 
