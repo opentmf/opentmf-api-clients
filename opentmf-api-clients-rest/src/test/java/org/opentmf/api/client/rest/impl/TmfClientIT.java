@@ -26,6 +26,7 @@ import org.opentmf.api.client.rest.helper.MockServerUtils;
 import org.opentmf.api.client.rest.helper.MockSyncTokenService;
 import org.opentmf.api.client.rest.helper.TestResponseClass;
 import org.opentmf.api.client.rest.helper.TestResponseModel;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.rest.service.api.SyncTokenService;
 import org.opentmf.commons.patch.JsonPatch;
@@ -76,6 +77,9 @@ class TmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    // An empty bearer-auth block makes this an authenticated (BEARER) client; without it,
+    // getAuthType() is NONE and the fixture would silently stop exercising the auth path.
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     RestClient restClient = RestClient.builder()
         .requestFactory(new JdkClientHttpRequestFactory()).build();
@@ -160,6 +164,20 @@ class TmfClientIT {
 
     TestResponseModel res = client.getWithToken("custom-token", id);
     assertThat(res.getId()).isEqualTo(id);
+  }
+
+  @Test
+  void get_sendsBearerAuthorizationHeader() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    client.get(id);
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("Bearer mock-test-token");
   }
 
   @Test
@@ -798,6 +816,7 @@ class TmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     List<String> requestedScopes = new ArrayList<>();
     SyncTokenService recordingTokenService = new MockSyncTokenService() {

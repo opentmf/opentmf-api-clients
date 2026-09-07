@@ -19,6 +19,7 @@ import org.opentmf.api.client.rest.helper.MockServerUtils;
 import org.opentmf.api.client.rest.helper.MockSyncTokenService;
 import org.opentmf.api.client.rest.helper.TestResponseClass;
 import org.opentmf.api.client.rest.helper.TestResponseModel;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -56,6 +57,7 @@ class GenericTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     RestClient restClient = RestClient.builder()
         .requestFactory(new JdkClientHttpRequestFactory()).build();

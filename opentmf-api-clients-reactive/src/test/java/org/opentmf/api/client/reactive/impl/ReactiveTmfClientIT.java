@@ -27,6 +27,7 @@ import org.opentmf.api.client.reactive.helper.MockTokenService;
 import org.opentmf.api.client.reactive.helper.TestResponseClass;
 import org.opentmf.api.client.reactive.helper.TestResponseModel;
 import org.opentmf.client.common.exception.OpenTmfClientResponseException;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.commons.patch.JsonPatch;
@@ -78,6 +79,7 @@ class ReactiveTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     client = new ReactiveTmfClientImpl<>(
         endpointConfig, serverConfig,
@@ -174,6 +176,22 @@ class ReactiveTmfClientIT {
           assertThat(res.getId()).isEqualTo(id);
         })
         .verifyComplete();
+  }
+
+  @Test
+  void get_sendsBearerAuthorizationHeader() {
+    MockServerUtils.setUpDynamicPostCallback(path);
+    MockServerUtils.setUpDynamicGetCallback(path);
+    String id = MockServerUtils.addDataToCache(path, MockServerUtils.getTestData());
+
+    StepVerifier.create(client.get(id))
+        .assertNext(res -> assertThat(res.getId()).isEqualTo(id))
+        .verifyComplete();
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("GET").withPath(path + "/" + id));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("Bearer mock-test-token");
   }
 
   @Test
@@ -798,6 +816,7 @@ class ReactiveTmfClientIT {
     ClientProperties cp = new ClientProperties();
     cp.setNumRetries(0);
     cp.setRetryWaitDuration(Duration.ofMillis(100));
+    cp.setBearerAuth(new BearerAuthConfig());
 
     var noScopeClient = new ReactiveTmfClientImpl<>(
         ec, sc, WebClient.create(), new MockTokenService(), cp, TestResponseModel.class);
@@ -945,6 +964,7 @@ class ReactiveTmfClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     List<String> requestedScopes = new ArrayList<>();
     TokenService recordingTokenService = new MockTokenService() {

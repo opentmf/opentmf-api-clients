@@ -1,6 +1,7 @@
 package org.opentmf.api.client.hub.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockserver.model.HttpRequest.request;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.Scope;
@@ -18,6 +20,7 @@ import org.opentmf.api.client.hub.helper.MockServerUtils;
 import org.opentmf.api.client.hub.helper.MockSyncTokenService;
 import org.opentmf.api.client.hub.model.EventSubscriptionInput;
 import org.opentmf.api.client.hub.model.HubRegistration;
+import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
@@ -60,6 +63,7 @@ class TmfHubClientIT {
     ClientProperties clientProperties = new ClientProperties();
     clientProperties.setNumRetries(0);
     clientProperties.setRetryWaitDuration(Duration.ofMillis(100));
+    clientProperties.setBearerAuth(new BearerAuthConfig());
 
     RestClient restClient = RestClient.builder()
         .requestFactory(new JdkClientHttpRequestFactory()).build();
@@ -85,6 +89,18 @@ class TmfHubClientIT {
     assertThat(reg.getId()).isNotBlank();
     assertThat(reg.getHubUri()).isNotNull();
     assertThat(reg.getHubUri().toString()).contains(path);
+  }
+
+  @Test
+  void registerListener_sendsBearerAuthorizationHeader() {
+    MockServerUtils.setUpHubCallbacks(path);
+
+    client.registerListener(subscriptionInput());
+
+    HttpRequest[] recorded = MockServerUtils.getMockServer()
+        .retrieveRecordedRequests(request().withMethod("POST").withPath(path));
+    assertThat(recorded).hasSize(1);
+    assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("Bearer mock-hub-token");
   }
 
   @Test
