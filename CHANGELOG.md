@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [3.0.0] - unreleased
 
+### Added
+- **Entity view** on the synchronous client: `client.entity()` returns a
+  `TmfEntityClient` whose verbs return `ResponseEntity<...>`, so response
+  headers and the status code are readable on the success path — `Location`
+  after a create, an `ETag` for a conditional follow-up, any custom `X-*`
+  header. Same eight verb families and 8-overload ladder as the body view;
+  `listAll*` deliberately has no entity form (N pages means N header sets),
+  `listPaged*` has none (`TmfPage` already is the header-derived view), and
+  `sub` composes (`client.sub(...).entity()`). Errors still throw
+  `OpenTmfClientResponseException`; failed-response headers keep coming from
+  the exception. `delete`'s untyped form gains a real return value:
+  `ResponseEntity<Void>` carries the status the old `void` discarded.
+
 ### Fixed
 - No-auth (`AuthType.NONE`) clients work: an `opentmf.api-clients` server whose
   `client-ref` points at an http-client with neither `bearer-auth` nor

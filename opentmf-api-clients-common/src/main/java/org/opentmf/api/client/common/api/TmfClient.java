@@ -57,6 +57,19 @@ public interface TmfClient<C, U, R> {
    */
   GenericTmfClient sub(String template, Object... vars);
 
+  // --- ENTITY VIEW ---
+
+  /**
+   * The entity view of this client: the same verbs returning {@link
+   * org.springframework.http.ResponseEntity} so response headers and the status code are readable
+   * on the success path. {@code listAll*} has no entity form (N pages means N header sets - no
+   * single entity could carry them honestly), {@code listPaged*} has none ({@code TmfPage} already
+   * is the header-derived view), and {@code sub} composes: {@code client.sub(...).entity()}.
+   * Errors still throw {@code OpenTmfClientResponseException}; failed-response headers come from
+   * the exception. The returned instance is cached - calling this repeatedly is free.
+   */
+  TmfEntityClient<C, U, R> entity();
+
   // --- GET (auto-token) ---
 
   R get(String id);

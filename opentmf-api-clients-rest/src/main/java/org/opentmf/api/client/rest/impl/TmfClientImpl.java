@@ -22,6 +22,7 @@ import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.api.GenericTmfClient;
 import org.opentmf.api.client.common.api.TmfClient;
+import org.opentmf.api.client.common.api.TmfEntityClient;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
 import org.opentmf.api.client.common.model.JsonFilter;
@@ -65,6 +66,7 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   private final ClientProperties clientProperties;
   private final Class<R> responseType;
   private final SubResourcePath subPath;
+  private final TmfEntityClient<C, U, R> entityView = new TmfEntityClientImpl<>(this);
 
   public TmfClientImpl(
       EndpointConfig endpointConfig,
@@ -101,6 +103,14 @@ public class TmfClientImpl<C, U, R> implements TmfClient<C, U, R> {
   @Override public GenericTmfClient sub(String template, Object... vars) {
     return new GenericTmfClientImpl(endpointConfig, serverConfig, restClient, tokenService,
         clientProperties, subPath.append(template, vars));
+  }
+
+  // ==========================================================================
+  // ENTITY VIEW
+  // ==========================================================================
+
+  @Override public TmfEntityClient<C, U, R> entity() {
+    return entityView;
   }
 
   // ==========================================================================
