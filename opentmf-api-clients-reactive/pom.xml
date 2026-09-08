@@ -5,7 +5,7 @@
   <parent>
     <groupId>org.opentmf.client</groupId>
     <artifactId>opentmf-api-clients</artifactId>
-    <version>3.0.0-SNAPSHOT</version>
+    <version>3.0.0</version>
   </parent>
 
   <artifactId>opentmf-api-clients-reactive</artifactId>
