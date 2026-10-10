@@ -3,6 +3,7 @@ package org.opentmf.api.client.rest.impl;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -15,6 +16,8 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+import org.mockserver.model.ClearType;
 import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
@@ -1056,5 +1059,58 @@ class TmfClientIT {
     var re = client.entity().delete(id);
     assertThat(re.getStatusCode().is2xxSuccessful()).isTrue();
     assertThat(re.getBody()).isNull();
+  }
+
+  // --- No automatic retry: every verb is sent exactly once, even on a retryable 5xx ---
+
+  @Test
+  void everyVerb_retryable5xx_isSentExactlyOnce_evenWithNumRetriesConfigured() {
+    MockServerUtils.getMockServer()
+        .when(request().withPath(path + ".*"))
+        .respond(response().withStatusCode(HttpStatus.SERVICE_UNAVAILABLE.value()));
+    var retryConfigured = retryConfiguredClient();
+    JsonPatch jsonPatch = JsonPatch.builder().replace("/name", "x").build();
+
+    Map<String, Executable> calls = new LinkedHashMap<>();
+    calls.put("POST", () -> retryConfigured.post(testDataMap()));
+    calls.put("GET", () -> retryConfigured.get("id-1"));
+    calls.put("LIST", retryConfigured::list);
+    calls.put("PUT", () -> retryConfigured.put("id-1", Map.of("name", "n")));
+    calls.put("MERGE PATCH", () -> retryConfigured.patch("id-1", Map.of("name", "n")));
+    calls.put("JSON PATCH", () -> retryConfigured.patch("id-1", jsonPatch));
+    calls.put("COLLECTION PATCH", () -> retryConfigured.patchCollection(jsonPatch));
+    calls.put("DELETE", () -> retryConfigured.delete("id-1"));
+
+    for (Map.Entry<String, Executable> call : calls.entrySet()) {
+      MockServerUtils.getMockServer().clear(request(), ClearType.LOG);
+      assertThatThrownBy(() -> call.getValue().execute())
+          .as(call.getKey())
+          .isInstanceOf(RestClientException.class);
+      assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request()))
+          .as("%s must be sent exactly once", call.getKey())
+          .hasSize(1);
+    }
+  }
+
+  private TmfClientImpl<Map<String, Object>, Map<String, Object>, TestResponseModel>
+      retryConfiguredClient() {
+    ServerConfig sc = new ServerConfig();
+    sc.setBaseUrl(MockServerUtils.getBaseUrl());
+    sc.setContextPath("");
+    sc.setClientRef("default");
+    sc.setEndpoints(Map.of());
+
+    EndpointConfig ec = new EndpointConfig();
+    ec.setPath(path);
+
+    ClientProperties props = new ClientProperties();
+    // A retry budget that, if it were honoured for regular calls, would re-send each request.
+    props.setNumRetries(3);
+    props.setRetryWaitDuration(Duration.ofMillis(10));
+    props.setBearerAuth(new BearerAuthConfig());
+
+    return new TmfClientImpl<>(ec, sc,
+        RestClient.builder().requestFactory(new JdkClientHttpRequestFactory()).build(),
+        new MockSyncTokenService(), props, TestResponseModel.class);
   }
 }

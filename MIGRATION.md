@@ -5,6 +5,32 @@ libraries. New users do not need to read it — start from the [README](README.m
 
 ---
 
+## From 3.0 to 3.1
+
+### No automatic retries (behavioural, breaking)
+
+Up to 3.0.x every client — `TmfClient`, `ReactiveTmfClient`, `TmfHubClient`, `ReactiveTmfHubClient`
+— silently retried every verb on a retryable status (408, 429, 500, 502–504, 509) up to
+`num-retries` times (default 3, backoff from `retry-wait-duration`, default 5 s). That re-sent
+non-idempotent `POST`s and could duplicate a create. From 3.1.0 no request is retried automatically;
+`num-retries` / `retry-wait-duration` keep their `opentmf-http-clients` meaning (bearer-token
+retrieval only).
+
+No signature or configuration changes. If you relied on the implicit retry — typically for a
+`GET` — wrap the call yourself:
+
+```java
+// sync
+SyncClientUtil.executeWithRetry(() -> client.get(id), numRetries, retryWaitDuration);
+
+// reactive
+client.get(id).retryWhen(WebClientUtil.retry(numRetries, retryWaitDuration));
+```
+
+Only do this where a repeat is safe. See [Retries are opt-in](README.md#retries-are-opt-in).
+
+---
+
 ## From 2.x to 3.0
 
 ### Reactive `listPaged*` returns fully materialized pages (breaking)

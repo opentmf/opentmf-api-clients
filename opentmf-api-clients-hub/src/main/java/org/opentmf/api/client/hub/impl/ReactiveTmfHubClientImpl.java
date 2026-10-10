@@ -28,7 +28,6 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.util.UriComponentsBuilder;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Reactive (WebClient) implementation of {@link ReactiveTmfHubClient}.
@@ -74,7 +73,6 @@ public class ReactiveTmfHubClientImpl implements ReactiveTmfHubClient {
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfHubClientImpl::handleError)
         .bodyToMono(EventSubscription.class)
-        .retryWhen(retry())
         .map(this::toRegistration);
   }
 
@@ -92,7 +90,6 @@ public class ReactiveTmfHubClientImpl implements ReactiveTmfHubClient {
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfHubClientImpl::handleError)
         .toBodilessEntity()
-        .retryWhen(retry())
         .then();
   }
 
@@ -112,7 +109,6 @@ public class ReactiveTmfHubClientImpl implements ReactiveTmfHubClient {
           .retrieve()
           .onStatus(HttpStatusCode::isError, ReactiveTmfHubClientImpl::handleError)
           .toBodilessEntity()
-          .retryWhen(retry())
           .then();
     });
   }
@@ -135,12 +131,6 @@ public class ReactiveTmfHubClientImpl implements ReactiveTmfHubClient {
   private Consumer<HttpHeaders> headers(String token) {
     return headersConsumer(tokenService.getTokenType(), token, null, null,
         clientProperties.getAuthType());
-  }
-
-  private RetryBackoffSpec retry() {
-    return WebClientUtil.retry(
-        clientProperties.getNumRetries(),
-        clientProperties.getRetryWaitDuration());
   }
 
   private static Mono<? extends Throwable> handleError(ClientResponse response) {

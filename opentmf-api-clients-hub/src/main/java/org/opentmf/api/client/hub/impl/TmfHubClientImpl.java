@@ -7,7 +7,6 @@ import static org.opentmf.api.client.common.util.HeaderUtil.prepareGetDelete;
 import java.net.URI;
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 import lombok.extern.slf4j.Slf4j;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
@@ -19,7 +18,6 @@ import org.opentmf.api.client.hub.model.EventSubscriptionInput;
 import org.opentmf.api.client.hub.model.HubRegistration;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.rest.service.api.SyncTokenService;
-import org.opentmf.client.rest.util.SyncClientUtil;
 import org.opentmf.commons.util.JacksonUtil;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -65,9 +63,8 @@ public class TmfHubClientImpl implements TmfHubClient {
     URI uri = UriBuilderUtil.buildUri(serverConfig, endpointConfig, null);
     var h = prepareAndValidate(headers(token), MediaType.APPLICATION_JSON);
 
-    EventSubscription response = withRetry(() ->
-        restClient.post().uri(uri).headers(hh -> hh.addAll(h))
-            .body(input).retrieve().body(EventSubscription.class));
+    EventSubscription response = restClient.post().uri(uri).headers(hh -> hh.addAll(h))
+        .body(input).retrieve().body(EventSubscription.class);
 
     return toRegistration(response);
   }
@@ -82,11 +79,8 @@ public class TmfHubClientImpl implements TmfHubClient {
     Objects.requireNonNull(id, "Subscription ID must not be null.");
     URI uri = UriBuilderUtil.buildUriWithId(serverConfig, endpointConfig, id);
     var h = prepareGetDelete(headers(token));
-    withRetry(() -> {
-      restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
-          .retrieve().toBodilessEntity();
-      return null;
-    });
+    restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
+        .retrieve().toBodilessEntity();
   }
 
   @Override
@@ -101,11 +95,8 @@ public class TmfHubClientImpl implements TmfHubClient {
 
     String token = getToken(Scope.DELETE);
     var h = prepareGetDelete(headers(token));
-    withRetry(() -> {
-      restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
-          .retrieve().toBodilessEntity();
-      return null;
-    });
+    restClient.delete().uri(uri).headers(hh -> hh.addAll(h))
+        .retrieve().toBodilessEntity();
   }
 
   private HubRegistration toRegistration(EventSubscription subscription) {
@@ -126,12 +117,5 @@ public class TmfHubClientImpl implements TmfHubClient {
   private Consumer<HttpHeaders> headers(String token) {
     return headersConsumer(tokenService.getTokenType(), token, null, null,
         clientProperties.getAuthType());
-  }
-
-  private <T> T withRetry(Supplier<T> action) {
-    return SyncClientUtil.executeWithRetry(
-        action,
-        clientProperties.getNumRetries(),
-        clientProperties.getRetryWaitDuration());
   }
 }

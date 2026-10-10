@@ -12,10 +12,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockserver.model.ClearType;
 import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
@@ -32,6 +34,7 @@ import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.reactive.service.api.TokenService;
 import org.opentmf.commons.patch.JsonPatch;
+import org.reactivestreams.Publisher;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -1283,5 +1286,58 @@ class ReactiveTmfClientIT {
       assertThat(re.getHeaders()).isNotNull();
     }
     assertThat(client.get(id).block().getId()).isEqualTo(id);
+  }
+
+  // --- No automatic retry: every verb is sent exactly once, even on a retryable 5xx ---
+
+  @Test
+  void everyVerb_retryable5xx_isSentExactlyOnce_evenWithNumRetriesConfigured() {
+    MockServerUtils.getMockServer()
+        .when(request().withPath(path + ".*"))
+        .respond(response().withStatusCode(HttpStatus.SERVICE_UNAVAILABLE.value()));
+    var retryConfigured = retryConfiguredClient();
+    JsonPatch jsonPatch = JsonPatch.builder().replace("/name", "x").build();
+
+    Map<String, Supplier<Publisher<?>>> calls = new LinkedHashMap<>();
+    calls.put("POST", () -> retryConfigured.post(testDataMap()));
+    calls.put("GET", () -> retryConfigured.get("id-1"));
+    calls.put("LIST", retryConfigured::list);
+    calls.put("PUT", () -> retryConfigured.put("id-1", Map.of("name", "n")));
+    calls.put("MERGE PATCH", () -> retryConfigured.patch("id-1", Map.of("name", "n")));
+    calls.put("JSON PATCH", () -> retryConfigured.patch("id-1", jsonPatch));
+    calls.put("COLLECTION PATCH", () -> retryConfigured.patchCollection(jsonPatch));
+    calls.put("DELETE", () -> retryConfigured.delete("id-1"));
+
+    for (Map.Entry<String, Supplier<Publisher<?>>> call : calls.entrySet()) {
+      MockServerUtils.getMockServer().clear(request(), ClearType.LOG);
+      StepVerifier.create(call.getValue().get())
+          .as(call.getKey())
+          .expectError(OpenTmfClientResponseException.class)
+          .verify(Duration.ofSeconds(10));
+      assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request()))
+          .as("%s must be sent exactly once", call.getKey())
+          .hasSize(1);
+    }
+  }
+
+  private ReactiveTmfClientImpl<Map<String, Object>, Map<String, Object>, TestResponseModel>
+      retryConfiguredClient() {
+    ServerConfig sc = new ServerConfig();
+    sc.setBaseUrl(MockServerUtils.getBaseUrl());
+    sc.setContextPath("");
+    sc.setClientRef("default");
+    sc.setEndpoints(Map.of());
+
+    EndpointConfig ec = new EndpointConfig();
+    ec.setPath(path);
+
+    ClientProperties props = new ClientProperties();
+    // A retry budget that, if it were honoured for regular calls, would re-send each request.
+    props.setNumRetries(3);
+    props.setRetryWaitDuration(Duration.ofMillis(10));
+    props.setBearerAuth(new BearerAuthConfig());
+
+    return new ReactiveTmfClientImpl<>(ec, sc, WebClient.create(),
+        new MockTokenService(), props, TestResponseModel.class);
   }
 }

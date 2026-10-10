@@ -2,6 +2,7 @@ package org.opentmf.api.client.hub.impl;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockserver.model.HttpRequest.request;
+import static org.mockserver.model.HttpResponse.response;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.net.URI;
@@ -12,6 +13,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockserver.model.ClearType;
 import org.mockserver.model.HttpRequest;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.EndpointConfig;
 import org.opentmf.api.client.common.config.TmfApiClientsConfig.ServerConfig;
@@ -23,8 +25,10 @@ import org.opentmf.api.client.hub.model.HubRegistration;
 import org.opentmf.client.common.model.BearerAuthConfig;
 import org.opentmf.client.common.model.ClientProperties;
 import org.opentmf.client.rest.service.api.SyncTokenService;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientException;
 
 class TmfHubClientIT {
 
@@ -234,5 +238,35 @@ class TmfHubClientIT {
         .retrieveRecordedRequests(request().withMethod("POST").withPath(path));
     assertThat(recorded).hasSize(1);
     assertThat(recorded[0].getFirstHeader("Authorization")).isEqualTo("opaque-credential");
+  }
+
+  // --- No automatic retry: register and unregister are sent exactly once, even on a 5xx ---
+
+  @Test
+  void registerAndUnregister_retryable5xx_areSentExactlyOnce_evenWithNumRetriesConfigured() {
+    MockServerUtils.getMockServer()
+        .when(request().withPath(path + ".*"))
+        .respond(response().withStatusCode(HttpStatus.SERVICE_UNAVAILABLE.value()));
+    ClientProperties props = new ClientProperties();
+    // A retry budget that, if it were honoured for regular calls, would re-send each request.
+    props.setNumRetries(3);
+    props.setRetryWaitDuration(Duration.ofMillis(10));
+    props.setBearerAuth(new BearerAuthConfig());
+    var retryConfigured = new TmfHubClientImpl(endpointConfig, serverConfig,
+        RestClient.builder().requestFactory(new JdkClientHttpRequestFactory()).build(),
+        new MockSyncTokenService(), props);
+
+    assertThatThrownBy(() -> retryConfigured.registerListener(subscriptionInput()))
+        .isInstanceOf(RestClientException.class);
+    assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request()))
+        .as("POST must be sent exactly once")
+        .hasSize(1);
+
+    MockServerUtils.getMockServer().clear(request(), ClearType.LOG);
+    assertThatThrownBy(() -> retryConfigured.unregisterListener("sub-1"))
+        .isInstanceOf(RestClientException.class);
+    assertThat(MockServerUtils.getMockServer().retrieveRecordedRequests(request()))
+        .as("DELETE must be sent exactly once")
+        .hasSize(1);
   }
 }
