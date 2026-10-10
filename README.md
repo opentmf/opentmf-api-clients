@@ -34,6 +34,7 @@ maintenance mode for Spring Boot 3.x users. This library targets **Spring Boot 4
 8. [Client-side filtering — JsonPath guide](#client-side-filtering--jsonpath-guide)
 9. [Hub Client](#hub-client)
 10. [Error Handling](#error-handling)
+    - [Retries are opt-in](#retries-are-opt-in)
 11. [Response headers](#response-headers)
 12. [Migration](#migration)
 13. [Version History](#version-history)
@@ -458,7 +459,7 @@ Rules and guarantees:
 - Template/argument arity is validated eagerly — too few *and* too many arguments throw
   `IllegalArgumentException` before any request is issued.
 - The derived client inherits the parent endpoint's OAuth scopes, fixed headers, and transport
-  (`RestClient`/`WebClient`, retries, token service). For a different scope, configure a
+  (`RestClient`/`WebClient`, token service). For a different scope, configure a
   separate endpoint in YAML instead.
 - `sub(...)` on an already-derived client appends to its path, so nesting depth is unbounded.
   Each call allocates a thin new wrapper; hoist the derived client out of hot loops.
@@ -819,6 +820,33 @@ hubClient.registerListener(input)
 All errors are surfaced as `OpenTmfClientResponseException` (or the
 `OpenTmfClientNotFoundException` subclass for 404s) from `opentmf-http-clients`. No per-client
 exception classes are needed.
+
+### Retries are opt-in
+
+The clients never retry a request on their own — on no status and for no verb (since 3.1.0). A
+`POST` that fails is sent exactly once, so a create cannot be duplicated behind your back. This is
+the `opentmf-http-clients` contract: `num-retries` / `retry-wait-duration` drive bearer-token
+retrieval only.
+
+Where a retry is safe for your call (typically an idempotent `GET`), opt in at the call site
+with the `opentmf-http-clients` helpers, passing the configured values or your own:
+
+```java
+// sync
+ProductOrder order = SyncClientUtil.executeWithRetry(
+    () -> orderClient.get(id),
+    clientProperties.getNumRetries(),
+    clientProperties.getRetryWaitDuration());
+
+// reactive
+Mono<ProductOrder> order = orderClient.get(id)
+    .retryWhen(WebClientUtil.retry(
+        clientProperties.getNumRetries(),
+        clientProperties.getRetryWaitDuration()));
+```
+
+Both retry only on the retryable statuses (408, 429, 500, 502, 503, 504, 509) with exponential
+backoff; any other status fails immediately.
 
 ---
 

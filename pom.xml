@@ -4,7 +4,7 @@
 
   <groupId>org.opentmf.client</groupId>
   <artifactId>opentmf-api-clients</artifactId>
-  <version>3.0.1-SNAPSHOT</version>
+  <version>3.1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
   <name>opentmf-api-clients</name>
 
@@ -70,7 +70,8 @@
     <maven.compiler.target>${java.version}</maven.compiler.target>
 
     <spring-boot.version>4.1.1</spring-boot.version>
-    <opentmf-http-clients.version>2.1.8</opentmf-http-clients.version>
+    <jackson-bom.version>3.1.7</jackson-bom.version>
+    <opentmf-http-clients.version>2.3.0</opentmf-http-clients.version>
     <opentmf-json-patch.version>1.1.0</opentmf-json-patch.version>
     <json-path.version>3.0.0</json-path.version>
 
@@ -79,18 +80,29 @@
     <maven-jar-plugin.version>3.5.1</maven-jar-plugin.version>
     <maven-source-plugin.version>3.4.0</maven-source-plugin.version>
     <maven-javadoc-plugin.version>3.12.0</maven-javadoc-plugin.version>
-    <maven-deploy-plugin.version>3.1.4</maven-deploy-plugin.version>
+    <maven-deploy-plugin.version>3.2.0</maven-deploy-plugin.version>
     <maven-enforcer-plugin.version>3.6.3</maven-enforcer-plugin.version>
     <maven-release-plugin.version>3.3.1</maven-release-plugin.version>
     <maven-gpg-plugin.version>3.2.8</maven-gpg-plugin.version>
     <central-publishing-maven-plugin.version>0.11.0</central-publishing-maven-plugin.version>
     <jacoco-maven-plugin.version>0.8.15</jacoco-maven-plugin.version>
-    <archunit-junit5.version>1.5.0</archunit-junit5.version>
-    <opentmf-mockserver.version>2.1.11</opentmf-mockserver.version>
+    <archunit-junit5.version>1.5.1</archunit-junit5.version>
+    <opentmf-mockserver.version>2.1.13</opentmf-mockserver.version>
   </properties>
 
   <dependencyManagement>
     <dependencies>
+      <!-- CVE override of a Spring Boot BOM-managed version: Boot 4.1.1 (the newest GA) manages
+           Jackson 3.1.5, which carries HIGH CVE-2026-68497, -89407, -89425, -91776 and -91777;
+           3.1.7 fixes all five on the same 3.1 line Boot is built against. Imported before the
+           Boot BOM so it wins. Drop it once a Boot release manages Jackson >= 3.1.7. -->
+      <dependency>
+        <groupId>tools.jackson</groupId>
+        <artifactId>jackson-bom</artifactId>
+        <version>${jackson-bom.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
       <dependency>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-dependencies</artifactId>

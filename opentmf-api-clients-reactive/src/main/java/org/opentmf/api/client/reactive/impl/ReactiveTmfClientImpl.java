@@ -47,7 +47,6 @@ import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
-import reactor.util.retry.RetryBackoffSpec;
 
 /**
  * Reactive (WebClient) implementation of {@link ReactiveTmfClient}.
@@ -197,8 +196,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return webClient.get().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -361,8 +359,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -412,8 +409,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -467,8 +463,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(jsonPatch.toJsonNode())
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -526,7 +521,6 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
         .toEntity(arrayType)
-        .retryWhen(retry())
         .map(entity -> {
           T[] body = entity.getBody();
           List<T> content = body != null ? List.of(body) : List.of();
@@ -581,8 +575,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .bodyValue(obj)
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -620,8 +613,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toBodilessEntity()
-        .retryWhen(retry());
+        .toBodilessEntity();
   }
 
   @Override public <T> Mono<T> deleteWithToken(String token, String id, Class<T> type) {
@@ -641,8 +633,7 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
     return webClient.delete().uri(uri).headers(hh -> hh.addAll(h))
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
-        .toEntity(type)
-        .retryWhen(retry());
+        .toEntity(type);
   }
 
   // ==========================================================================
@@ -661,7 +652,6 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
         .retrieve()
         .onStatus(HttpStatusCode::isError, ReactiveTmfClientImpl::handleError)
         .toEntity(arrayType)
-        .retryWhen(retry())
         .map(entity -> {
           T[] body = entity.getBody();
           List<T> content = body != null ? List.of(body) : List.of();
@@ -706,12 +696,6 @@ public class ReactiveTmfClientImpl<C, U, R> implements ReactiveTmfClient<C, U, R
                   .map(o -> JacksonUtil.jsonToObject(JacksonUtil.objectToJson(o), type))
                   .toList());
         });
-  }
-
-  private RetryBackoffSpec retry() {
-    return WebClientUtil.retry(
-        clientProperties.getNumRetries(),
-        clientProperties.getRetryWaitDuration());
   }
 
   private static Mono<? extends Throwable> handleError(ClientResponse response) {
