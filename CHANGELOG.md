@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [3.1.0] - 2026-10-10
+
+### Changed
+- **Breaking (behaviour): no request is retried automatically any more.** Up to 3.0.0 every
+  client — `TmfClient`, `ReactiveTmfClient`, `TmfHubClient`, `ReactiveTmfHubClient` — wrapped
+  every verb in a retry driven by `num-retries` / `retry-wait-duration` (default 3 retries, 5 s
+  doubling backoff) on any retryable status (408, 429, 500, 502–504, 509). That re-sent
+  non-idempotent `POST`s and could duplicate a create, and it contradicted the documented
+  `opentmf-http-clients` contract for those properties: they drive bearer-token retrieval only,
+  and regular calls are never retried unless the caller opts in. Every request is now sent exactly
+  once. No signature or configuration changes. Callers that relied on the implicit retry (typically
+  for a `GET`) wrap the call in `SyncClientUtil.executeWithRetry(...)` or
+  `.retryWhen(WebClientUtil.retry(...))` themselves — see
+  [MIGRATION.md](MIGRATION.md#from-30-to-31) and the README's "Retries are opt-in".
+- Dependency and build-tooling updates: opentmf-http-clients 2.1.8 → 2.3.0, Jackson 3.1.5 → 3.1.7
+  (BOM override for HIGH CVE-2026-68497, -89407, -89425, -91776, -91777 until Spring Boot manages a
+  fixed version), maven-deploy-plugin 3.1.4 → 3.2.0; test-only: opentmf-mockserver 2.1.11 →
+  2.1.13, archunit-junit5 1.5.0 → 1.5.1.
+
 ## [3.0.0] - 2026-09-08
 
 ### Added
